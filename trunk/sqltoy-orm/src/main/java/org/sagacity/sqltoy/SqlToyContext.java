@@ -16,6 +16,7 @@ import org.sagacity.sqltoy.config.model.ElasticEndpoint;
 import org.sagacity.sqltoy.config.model.EntityMeta;
 import org.sagacity.sqltoy.config.model.SqlToyConfig;
 import org.sagacity.sqltoy.config.model.SqlType;
+import org.sagacity.sqltoy.executor.QueryExecutor;
 import org.sagacity.sqltoy.plugins.IUnifyFieldsHandler;
 import org.sagacity.sqltoy.plugins.function.FunctionUtils;
 import org.sagacity.sqltoy.plugins.sharding.ShardingStrategy;
@@ -24,6 +25,8 @@ import org.sagacity.sqltoy.translate.cache.TranslateCacheManager;
 import org.sagacity.sqltoy.utils.BeanUtil;
 import org.sagacity.sqltoy.utils.DataSourceUtils.Dialect;
 import org.sagacity.sqltoy.utils.IdUtil;
+import org.sagacity.sqltoy.utils.ReservedWordsUtil;
+import org.sagacity.sqltoy.utils.SqlUtil;
 import org.sagacity.sqltoy.utils.StringUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,6 +34,22 @@ import org.springframework.beans.BeansException;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 
+//------------------了解 sqltoy的关键优势: -------------------------------------------------*/
+//1、最简最直观的sql编写方式(不仅仅是查询语句)，采用条件参数前置处理规整法，让sql语句部分跟客户端保持高度一致
+//  (很多框架没有悟到这一点，且没有发现条件参数95%以上为null或为空白就表示不参与条件检索,少量特殊情况
+//   只需稍做处理即可规整，所以总是摆脱不了if(param!=null)形态的显式逻辑判断)
+//2、sql中支持注释(规避了对hint特性的影响,知道hint吗?搜oracle hint)，和动态更新加载，便于开发和后期维护整个过程的管理
+//3、支持缓存翻译和反向缓存条件检索，实现sql简化和性能大幅提升
+//4、支持快速分页和分页优化功能，实现分页最高级别的优化，同时还考虑到了cte多个with as情况下的优化支持
+//5、根本杜绝sql注入问题，以后不需要讨论这个话题
+//6、支持行列转换、分组汇总求平均、同比环比计算，在于用算法解决复杂sql，同时也解决了sql跨数据库问题
+//7、支持保留字自动适配
+//8、支持跨数据库函数自适配,从而非常有利于一套代码适应多种数据库便于产品化
+//9、支持分库分表
+//10、提供了取top、取random记录、树形表结构构造和递归查询支持、updateFetch单次交互完成修改和查询等实用的功能
+//11、提供了有趣的条件处理：排它性条件、日期条件加减和提取月末月初处理等
+//12、提供了查询结果日期、数字格式化、安全脱敏处理，让复杂的事情变得简单
+//-------------------------------------------------------------------------------------*/
 /**
  * @project sagacity-sqltoy4.0
  * @description sqltoy 工具的上下文容器，提供对应的sql获取以及相关参数设置
@@ -38,6 +57,7 @@ import org.springframework.context.ApplicationContextAware;
  * @version id:SqlToyContext.java,Revision:v1.0,Date:2009-12-11 下午09:48:15
  * @Modification {Date:2018-1-5,增加对redis缓存翻译的支持}
  * @Modification {Date:2019-09-15,将跨数据库函数FunctionConverts统一提取到FunctionUtils中,实现不同数据库函数替换后的语句放入缓存,避免每次执行函数替换}
+ * @Modification {Date:2020-05-29,调整mongo的注入方式,剔除之前MongoDbFactory模式,直接使用MongoTemplate}
  */
 public class SqlToyContext implements ApplicationContextAware {
 	/**
@@ -172,11 +192,6 @@ public class SqlToyContext implements ApplicationContextAware {
 	private DataSource defaultDataSource;
 
 	/**
-	 * 定义mongodb处理的Factory类在spring中的bean实例名称 用名称方式避免强依赖
-	 */
-	private String mongoFactoryName = "mongoDbFactory";
-
-	/**
 	 * sql脚本检测间隔时长(默认为3秒)
 	 */
 	private Integer scriptCheckIntervalSeconds;
@@ -203,7 +218,12 @@ public class SqlToyContext implements ApplicationContextAware {
 	/**
 	 * 自行定义的属性
 	 */
-	private Map keyValues;
+	private Map<String, String> keyValues;
+
+	/**
+	 * 数据库保留字,用逗号分隔
+	 */
+	private String reservedWords;
 
 	/**
 	 * @todo 初始化
@@ -232,6 +252,16 @@ public class SqlToyContext implements ApplicationContextAware {
 		 * 初始化实体对象管理器
 		 */
 		entityManager.initialize(this);
+
+		/**
+		 * 设置保留字
+		 */
+		ReservedWordsUtil.put(reservedWords);
+
+		/**
+		 * 设置保留字
+		 */
+		ReservedWordsUtil.put(reservedWords);
 
 		/**
 		 * 初始化sql执行统计的基本参数
@@ -315,6 +345,15 @@ public class SqlToyContext implements ApplicationContextAware {
 	 * @return
 	 */
 	public SqlToyConfig getSqlToyConfig(String sqlKey, SqlType type) {
+		return scriptLoader.getSqlConfig(sqlKey, type);
+	}
+
+	public SqlToyConfig getSqlToyConfig(QueryExecutor queryExecutor, SqlType type) {
+		String sqlKey = queryExecutor.getSql();
+		// 查询语句补全select * from table,避免一些sql直接从from 开始
+		if (SqlType.search.equals(type) && queryExecutor.getResultType() != null) {
+			sqlKey = SqlUtil.completionSql(this, (Class) queryExecutor.getResultType(), sqlKey);
+		}
 		return scriptLoader.getSqlConfig(sqlKey, type);
 	}
 
@@ -424,6 +463,10 @@ public class SqlToyContext implements ApplicationContextAware {
 		return entityManager.getEntityMeta(this, entityClass);
 	}
 
+	public boolean isEntity(Class<?> entityClass) {
+		return entityManager.isEntity(this, entityClass);
+	}
+
 	/**
 	 * @todo 提供可以动态增加解析sql片段配置的接口,并返回具体id,用于第三方平台集成，如报表平台等
 	 * @param sqlSegment
@@ -487,10 +530,14 @@ public class SqlToyContext implements ApplicationContextAware {
 				this.dialect = Dialect.GAUSSDB;
 			} else if (tmp.startsWith(Dialect.MARIADB)) {
 				this.dialect = Dialect.MARIADB;
-			} else if (tmp.startsWith(Dialect.SAP_HANA)) {
-				this.dialect = Dialect.SAP_HANA;
 			} else if (tmp.startsWith(Dialect.CLICKHOUSE)) {
 				this.dialect = Dialect.CLICKHOUSE;
+			} else if (tmp.startsWith(Dialect.OCEANBASE)) {
+				this.dialect = Dialect.OCEANBASE;
+			} else if (tmp.startsWith(Dialect.DM)) {
+				this.dialect = Dialect.DM;
+			} else if (tmp.startsWith(Dialect.TIDB)) {
+				this.dialect = Dialect.TIDB;
 			} else {
 				this.dialect = dialect;
 			}
@@ -630,20 +677,6 @@ public class SqlToyContext implements ApplicationContextAware {
 	}
 
 	/**
-	 * @param mongoDbFactory the mongoDbFactory to set
-	 */
-	public void setMongoFactoryName(String mongoFactoryName) {
-		this.mongoFactoryName = mongoFactoryName;
-	}
-
-	/**
-	 * @return the mongoFactoryName
-	 */
-	public String getMongoFactoryName() {
-		return mongoFactoryName;
-	}
-
-	/**
 	 * @param elasticConfigs the elasticConfigs to set
 	 */
 	public void setElasticEndpoints(List<ElasticEndpoint> elasticEndpointList) {
@@ -730,6 +763,13 @@ public class SqlToyContext implements ApplicationContextAware {
 
 	public void setDefaultElastic(String defaultElastic) {
 		this.defaultElastic = defaultElastic;
+	}
+
+	/**
+	 * @param reservedWords the reservedWords to set
+	 */
+	public void setReservedWords(String reservedWords) {
+		this.reservedWords = reservedWords;
 	}
 
 	public void destroy() {

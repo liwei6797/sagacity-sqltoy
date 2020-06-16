@@ -12,9 +12,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.logging.Logger;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.sagacity.quickvo.QuickVOConstants;
 import org.sagacity.quickvo.model.DataSourceModel;
 import org.sagacity.quickvo.model.TableColumnMeta;
@@ -36,7 +35,7 @@ public class DBHelper {
 	/**
 	 * 定义全局日志
 	 */
-	private final static Logger logger = LogManager.getLogger(DBHelper.class);
+	private static Logger logger = LoggerUtil.getLogger();
 
 	/**
 	 * 数据库连接
@@ -54,7 +53,7 @@ public class DBHelper {
 	 */
 	public static void loadDatasource(NodeList datasouceElts) throws Exception {
 		if (datasouceElts == null || datasouceElts.getLength() == 0) {
-			logger.error("没有配置相应的数据库");
+			logger.info("没有配置相应的数据库");
 			throw new Exception("没有配置相应的数据库");
 		}
 		Element datasouceElt;
@@ -91,17 +90,17 @@ public class DBHelper {
 			dbConfig = dbMaps.values().iterator().next();
 		}
 		if (dbConfig != null) {
-			logger.info("开始连接数据库:{},url:{}", dbName, dbConfig.getUrl());
+			logger.info("开始连接数据库:" + dbName + ",url:" + dbConfig.getUrl());
 			try {
 				Class.forName(dbConfig.getDriver());
 				conn = DriverManager.getConnection(dbConfig.getUrl(), dbConfig.getUsername(), dbConfig.getPassword());
 				return true;
 			} catch (ClassNotFoundException cnfe) {
 				cnfe.printStackTrace();
-				logger.error("数据库驱动未能加载，请在/drivers 目录下放入正确的数据库驱动jar包!");
+				logger.info("数据库驱动未能加载，请在/libs 目录下放入正确的数据库驱动jar包!");
 				throw cnfe;
 			} catch (SQLException se) {
-				logger.error("获取数据库连接失败!");
+				logger.info("获取数据库连接失败!");
 				throw se;
 			}
 		}
@@ -131,7 +130,10 @@ public class DBHelper {
 	 */
 	public static List getTableAndView(final String[] includes, final String[] excludes) throws Exception {
 		int dbType = DBUtil.getDbType(conn);
-		String[] types = new String[] { "TABLE" };
+		String schema = dbConfig.getSchema();
+		String catalog = dbConfig.getCatalog();
+		logger.info("提取数据库:schema=[" + schema + "]和 catalog=[" + catalog + "]");
+		String[] types = new String[] { "TABLE", "VIEW" };
 		PreparedStatement pst = null;
 		ResultSet rs = null;
 		// 数据库表注释，默认为remarks，不同数据库其名称不一样
@@ -145,10 +147,10 @@ public class DBHelper {
 		else if (dbType == DbType.MYSQL) {
 			StringBuilder queryStr = new StringBuilder("SELECT TABLE_NAME,TABLE_SCHEMA,TABLE_TYPE,TABLE_COMMENT ");
 			queryStr.append(" FROM INFORMATION_SCHEMA.TABLES where 1=1 ");
-			if (dbConfig.getSchema() != null) {
-				queryStr.append(" and TABLE_SCHEMA='").append(dbConfig.getSchema()).append("'");
-			} else if (dbConfig.getCatalog() != null) {
-				queryStr.append(" and TABLE_SCHEMA='").append(dbConfig.getCatalog()).append("'");
+			if (schema != null) {
+				queryStr.append(" and TABLE_SCHEMA='").append(schema).append("'");
+			} else if (catalog != null) {
+				queryStr.append(" and TABLE_SCHEMA='").append(catalog).append("'");
 			}
 			if (types != null) {
 				queryStr.append(" and (");
@@ -164,7 +166,7 @@ public class DBHelper {
 			rs = pst.executeQuery();
 			commentName = "TABLE_COMMENT";
 		} else {
-			rs = conn.getMetaData().getTables(dbConfig.getCatalog(), dbConfig.getSchema(), null, types);
+			rs = conn.getMetaData().getTables(catalog, schema, null, types);
 		}
 		return (List) DBUtil.preparedStatementProcess(commentName, pst, rs, new PreparedStatementResultHandler() {
 			public void execute(Object obj, PreparedStatement pst, ResultSet rs) throws Exception {
@@ -172,6 +174,7 @@ public class DBHelper {
 				String tableName;
 				// 是否包含标识，通过正则表达是判断是否是需要获取的表
 				boolean is_include = false;
+				String type;
 				while (rs.next()) {
 					is_include = false;
 					tableName = rs.getString("TABLE_NAME");
@@ -182,8 +185,9 @@ public class DBHelper {
 								break;
 							}
 						}
-					} else
+					} else {
 						is_include = true;
+					}
 					if (excludes != null && excludes.length > 0) {
 						for (int j = 0; j < excludes.length; j++) {
 							if (StringUtil.matches(tableName, excludes[j])) {
@@ -197,7 +201,12 @@ public class DBHelper {
 						tableMeta.setTableName(tableName);
 						tableMeta.setSchema(dbConfig.getSchema());
 						// tableMeta.setSchema(rs.getString("TABLE_SCHEMA"));
-						tableMeta.setTableType(rs.getString("TABLE_TYPE"));
+						type = rs.getString("TABLE_TYPE").toLowerCase();
+						if (type.contains("view")) {
+							tableMeta.setTableType("VIEW");
+						} else {
+							tableMeta.setTableType("TABLE");
+						}
 						tableMeta.setTableRemark(rs.getString(obj.toString()));
 						tables.add(tableMeta);
 					}

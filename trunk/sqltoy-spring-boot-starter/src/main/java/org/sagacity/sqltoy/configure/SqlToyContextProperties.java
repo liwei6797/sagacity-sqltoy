@@ -98,12 +98,15 @@ public class SqlToyContextProperties implements Serializable {
 	 */
 	private Map<String, String> dialectProperties;
 
-	private String mongoFactoryName;
-
 	/**
 	 * sqltoy默认数据库
 	 */
 	private String defaultDataSource;
+
+	/**
+	 * 数据库保留字,用逗号分隔
+	 */
+	private String reservedWords;
 
 	/**
 	 * @return the sqlResourcesDir
@@ -239,14 +242,6 @@ public class SqlToyContextProperties implements Serializable {
 		this.encoding = encoding;
 	}
 
-	public String getMongoFactoryName() {
-		return mongoFactoryName;
-	}
-
-	public void setMongoFactoryName(String mongoFactoryName) {
-		this.mongoFactoryName = mongoFactoryName;
-	}
-
 	public Integer getPrintSqlTimeoutMillis() {
 		return printSqlTimeoutMillis;
 	}
@@ -293,6 +288,20 @@ public class SqlToyContextProperties implements Serializable {
 
 	public void setDefaultDataSource(String defaultDataSource) {
 		this.defaultDataSource = defaultDataSource;
+	}
+
+	/**
+	 * @return the reservedWords
+	 */
+	public String getReservedWords() {
+		return reservedWords;
+	}
+
+	/**
+	 * @param reservedWords the reservedWords to set
+	 */
+	public void setReservedWords(String reservedWords) {
+		this.reservedWords = reservedWords;
 	}
 
 }

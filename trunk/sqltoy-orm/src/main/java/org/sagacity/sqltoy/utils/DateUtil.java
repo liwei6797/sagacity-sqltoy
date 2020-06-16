@@ -136,10 +136,9 @@ public class DateUtil {
 				return null;
 			}
 			return parseString(dateString, format, local);
-		} else {
-			String result = formatDate(data, format, local);
-			return parseString(result, format, local);
 		}
+		String result = formatDate(data, format, local);
+		return parseString(result, format, local);
 	}
 
 	public static Date parseString(String dateStr) {
@@ -148,17 +147,19 @@ public class DateUtil {
 
 	/**
 	 * @todo 将日期字符串或时间转换成时间类型 日期字符串中的日期分隔符可是:"/",".","-"， 返回时间具体到秒 只提供常用的日期格式处理
-	 * @param dateStr
+	 * @param dateVar
 	 * @param dateFormat
 	 * @param locale
 	 * @return
 	 */
-	public static Date parseString(String dateStr, String dateFormat, String locale) {
-		if (dateStr == null)
+	public static Date parseString(String dateVar, String dateFormat, String locale) {
+		if (dateVar == null) {
 			return null;
-		dateStr = dateStr.trim();
-		if ("".equals(dateStr))
+		}
+		String dateStr = dateVar.trim();
+		if (dateStr.equals("")) {
 			return null;
+		}
 		String realDF = null;
 		if (StringUtil.isNotBlank(dateFormat)) {
 			realDF = dateFormat;
@@ -176,8 +177,9 @@ public class DateUtil {
 				}
 				try {
 					result = dateParser.parse(dateStr);
-					if (result != null)
+					if (result != null) {
 						break;
+					}
 				} catch (ParseException pe) {
 				}
 			}
@@ -307,19 +309,20 @@ public class DateUtil {
 			return null;
 		}
 		Date result = null;
-		String dtStr = dt.toString();
+		String dtStr = dt.toString().trim();
 		if (dt instanceof String) {
-			result = parseString(dtStr, format, local);
-		} else if (dt instanceof java.util.Date) {
+			if (dtStr.length() == 13 && NumberUtil.isInteger(dtStr)) {
+				result = new java.util.Date(Long.valueOf(dtStr));
+			} else {
+				result = parseString(dtStr, format, local);
+			}
+		} // 为什么要new 一个，目的是避免前面日期对象变化导致后续转化后的也变化，所以这里是新建
+		else if (dt instanceof java.util.Date) {
 			result = new java.util.Date(((java.util.Date) dt).getTime());
 		} else if (dt instanceof java.time.LocalDate) {
 			result = asDate((LocalDate) dt);
-		} else if (dt instanceof java.time.LocalTime) {
-			result = asDate((LocalTime) dt);
 		} else if (dt instanceof java.time.LocalDateTime) {
 			result = asDate((LocalDateTime) dt);
-		} else if (dt instanceof java.sql.Date) {
-			result = new java.util.Date(((java.sql.Date) dt).getTime());
 		} else if (dt instanceof java.lang.Number) {
 			// 13位表示毫秒数
 			if (dtStr.length() != 13) {
@@ -327,6 +330,8 @@ public class DateUtil {
 			} else {
 				result = new java.util.Date(((Number) dt).longValue());
 			}
+		} else if (dt instanceof java.time.LocalTime) {
+			result = asDate((LocalTime) dt);
 		} else {
 			throw new IllegalArgumentException(dt + "日期数据必须是String、Date、Long、Integer类型,请正确输入!");
 		}
@@ -344,8 +349,9 @@ public class DateUtil {
 	}
 
 	public static String formatDate(Object dt, String fmt, String locale) {
-		if (dt == null)
+		if (dt == null) {
 			return null;
+		}
 		if (fmt.equalsIgnoreCase("YY")) {
 			String year = Integer.toString(getYear(dt));
 			return year.substring(year.length() - 2);
@@ -398,8 +404,9 @@ public class DateUtil {
 	}
 
 	public static LocalDate getDate(Object date) {
-		if (date instanceof LocalDate)
+		if (date instanceof LocalDate) {
 			return (LocalDate) date;
+		}
 		return asLocalDate(convertDateObject(date));
 	}
 
@@ -408,8 +415,9 @@ public class DateUtil {
 	}
 
 	public static LocalDateTime getDateTime(Object date) {
-		if (date instanceof LocalDateTime)
+		if (date instanceof LocalDateTime) {
 			return (LocalDateTime) date;
+		}
 		return asLocalDateTime(convertDateObject(date));
 	}
 
@@ -420,8 +428,9 @@ public class DateUtil {
 	// Add millisecond
 	public static Date addMilliSecond(Object dt, long millisecond) {
 		Date result = convertDateObject(dt);
-		if (millisecond != 0)
+		if (millisecond != 0) {
 			result.setTime(result.getTime() + millisecond);
+		}
 		return result;
 	}
 
@@ -449,8 +458,9 @@ public class DateUtil {
 
 	public static int getYear(Object dateValue) {
 		GregorianCalendar currentDate = new GregorianCalendar();
-		if (dateValue != null)
+		if (dateValue != null) {
 			currentDate.setTime(convertDateObject(dateValue));
+		}
 		return currentDate.get(Calendar.YEAR);
 	}
 
@@ -500,8 +510,9 @@ public class DateUtil {
 	 */
 	public static String format2China(Object dateValue) {
 		Date date = convertDateObject(dateValue);
-		if (null == date)
+		if (null == date) {
 			return null;
+		}
 		GregorianCalendar pointDate = new GregorianCalendar();
 		pointDate.setTime(convertDateObject(dateValue));
 		String tmpDate;

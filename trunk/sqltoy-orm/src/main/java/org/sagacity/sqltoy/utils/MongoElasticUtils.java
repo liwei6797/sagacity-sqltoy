@@ -6,20 +6,18 @@ package org.sagacity.sqltoy.utils;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.sagacity.sqltoy.SqlToyConstants;
 import org.sagacity.sqltoy.SqlToyContext;
 import org.sagacity.sqltoy.config.SqlConfigParseUtils;
+import org.sagacity.sqltoy.config.model.NoSqlFieldsModel;
 import org.sagacity.sqltoy.config.model.SqlToyConfig;
 import org.sagacity.sqltoy.config.model.SqlToyResult;
 import org.sagacity.sqltoy.config.model.SqlTranslate;
@@ -77,8 +75,9 @@ public class MongoElasticUtils {
 			return sqlToyConfig.getSql(null);
 		}
 		SqlToyResult sqlToyResult = wrapNoSql(sqlToyConfig, paramNames, paramValues);
-		if (sqlToyConfig.getNoSqlConfigModel().isSqlMode())
+		if (sqlToyConfig.getNoSqlConfigModel().isSqlMode()) {
 			return replaceSqlParams(sqlToyResult.getSql(), sqlToyResult.getParamsValue(), "'");
+		}
 		String mongoJson = replaceNoSqlParams(sqlToyResult.getSql(), sqlToyResult.getParamsValue(), "'").trim();
 		// json格式补全
 		if (!mongoJson.startsWith("{")) {
@@ -172,7 +171,7 @@ public class MongoElasticUtils {
 							.concat(markContentSql.substring(markContentSql.indexOf("(", start) + 1, end));
 					int logicParamCnt = StringUtil.matchCnt(evalStr, namedPattern);
 					// update 2017-4-14 增加@if()简单逻辑判断
-					logicValue = CommonUtils.evalLogic(evalStr, paramValuesList, preParamCnt, logicParamCnt);
+					logicValue = MacroIfLogic.evalLogic(evalStr, paramValuesList, preParamCnt, logicParamCnt);
 					// 逻辑不成立,剔除sql和对应参数
 					if (!logicValue) {
 						markContentSql = BLANK;
@@ -325,7 +324,6 @@ public class MongoElasticUtils {
 				}
 			}
 			index++;
-			// realMql.append(BLANK);
 		}
 		realMql.append(sql.substring(start));
 		return realMql.toString();
@@ -395,48 +393,6 @@ public class MongoElasticUtils {
 	}
 
 	/**
-	 * @todo 将结果构造到具体对象中
-	 * @param rowSet
-	 * @param fileds
-	 * @param resultClass
-	 * @return
-	 * @throws Exception
-	 */
-	public static List wrapResultClass(List rowSet, String[] fields, Class resultType) throws Exception {
-		if (rowSet == null || rowSet.isEmpty() || null == resultType || resultType.equals(List.class)
-				|| resultType.equals(ArrayList.class) || resultType.equals(Collection.class))
-			return rowSet;
-		String[] aliasFields = new String[fields.length];
-		System.arraycopy(fields, 0, aliasFields, 0, fields.length);
-		int aliasIndex = 0;
-		for (int i = 0; i < aliasFields.length; i++) {
-			aliasIndex = aliasFields[i].indexOf(":");
-			if (aliasIndex != -1) {
-				aliasFields[i] = aliasFields[i].substring(aliasIndex + 1).trim();
-			}
-		}
-		String[] aliasNames = CommonUtils.humpFieldNames(aliasFields);
-		Class superClass = resultType.getSuperclass();
-		if (resultType.equals(HashMap.class) || resultType.equals(ConcurrentHashMap.class)
-				|| resultType.equals(Map.class) || HashMap.class.equals(superClass)
-				|| LinkedHashMap.class.equals(superClass) || ConcurrentHashMap.class.equals(superClass)
-				|| Map.class.equals(superClass)) {
-			List result = new ArrayList();
-			List rowList;
-			for (int i = 0; i < rowSet.size(); i++) {
-				rowList = (List) rowSet.get(i);
-				Map row = (Map) resultType.getDeclaredConstructor().newInstance();
-				for (int j = 0; j < aliasNames.length; j++) {
-					row.put(aliasNames[j], rowList.get(j));
-				}
-				result.add(row);
-			}
-			return result;
-		}
-		return BeanUtil.reflectListToBean(rowSet, aliasNames, resultType);
-	}
-
-	/**
 	 * @todo 处理缓存翻译
 	 * @param sqlToyContext
 	 * @param sqlToyConfig
@@ -455,7 +411,9 @@ public class MongoElasticUtils {
 		// 存在缓存翻译,利用sqltoy的缓存管理
 		if (hasTranslate) {
 			translateCache = sqlToyContext.getTranslateManager().getTranslates(sqlToyContext, null, translateMap);
-			if (translateCache == null) {
+			if (translateCache == null || translateCache.isEmpty()) {
+				logger.warn("mongo or elastic cache:{} has no data!{}", sqlToyConfig.getTranslateMap().keySet(),
+						sqlToyConfig.getSql());
 				hasTranslate = false;
 			}
 		}
@@ -528,6 +486,7 @@ public class MongoElasticUtils {
 				keyValues = translateCache.get(lables[i]);
 				translateModel = translateMap.get(lables[i]);
 				cacheIndex = translateModel.getIndex();
+				// 实际列
 				value = dataMap.get(translateModel.getAlias());
 				if (value != null) {
 					translateAry = keyValues.get(value.toString());
@@ -538,4 +497,39 @@ public class MongoElasticUtils {
 			}
 		}
 	}
+
+	/**
+	 * @TODO 统一解析elastic或mongodb 的fields 信息,分解成fieldName 和 aliasName
+	 * @param fields
+	 * @param fieldMap
+	 * @return
+	 */
+	public static NoSqlFieldsModel processFields(String[] fields, HashMap<String, String[]> fieldMap) {
+		NoSqlFieldsModel result = new NoSqlFieldsModel();
+		String[] realFields = new String[fields.length];
+		String[] aliasFields = new String[fields.length];
+		int aliasIndex = 0;
+		for (int i = 0; i < fields.length; i++) {
+			realFields[i] = fields[i];
+			aliasFields[i] = fields[i];
+			aliasIndex = fields[i].indexOf(":");
+			if (aliasIndex != -1) {
+				realFields[i] = fields[i].substring(0, aliasIndex).trim();
+				aliasFields[i] = fields[i].substring(aliasIndex + 1).trim();
+			} else {
+				aliasIndex = fields[i].lastIndexOf(".");
+				if (aliasIndex != -1) {
+					aliasFields[i] = fields[i].substring(aliasIndex + 1).trim();
+				}
+			}
+			// 放入缓存为了提升效率
+			if (fieldMap != null && realFields[i].contains(".")) {
+				fieldMap.put(realFields[i], realFields[i].split("\\."));
+			}
+		}
+		result.setFields(realFields);
+		result.setAliasLabels(aliasFields);
+		return result;
+	}
+
 }

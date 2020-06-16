@@ -32,13 +32,17 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 import org.sagacity.sqltoy.SqlToyConstants;
+import org.sagacity.sqltoy.SqlToyContext;
 import org.sagacity.sqltoy.callback.CallableStatementResultHandler;
 import org.sagacity.sqltoy.callback.InsertRowCallbackHandler;
 import org.sagacity.sqltoy.callback.PreparedStatementResultHandler;
 import org.sagacity.sqltoy.callback.RowCallbackHandler;
+import org.sagacity.sqltoy.config.SqlConfigParseUtils;
+import org.sagacity.sqltoy.config.model.EntityMeta;
 import org.sagacity.sqltoy.config.model.TableColumnMeta;
 import org.sagacity.sqltoy.model.TreeTableModel;
 import org.sagacity.sqltoy.utils.DataSourceUtils.DBType;
@@ -88,6 +92,11 @@ public class SqlUtil {
 
 	// union 匹配模式
 	public static final Pattern UNION_PATTERN = Pattern.compile("(?i)\\W+union\\W+");
+
+	/**
+	 * 存放转换后的sql
+	 */
+	private static ConcurrentHashMap<String, String> convertSqlMap = new ConcurrentHashMap<String, String>();
 
 	// sql 注释过滤器
 	private static HashMap sqlCommentfilters = new HashMap();
@@ -225,7 +234,13 @@ public class SqlUtil {
 		String tmpStr;
 		if (null == paramValue) {
 			if (jdbcType != -1) {
-				pst.setNull(paramIndex, jdbcType);
+				//postgresql bytea类型需要统一处理成BINARY
+				if (jdbcType == java.sql.Types.BLOB
+						&& (dbType == DBType.POSTGRESQL || dbType == DBType.GAUSSDB)) {
+					pst.setNull(paramIndex, java.sql.Types.BINARY);
+				} else {
+					pst.setNull(paramIndex, jdbcType);
+				}
 			} else {
 				pst.setNull(paramIndex, java.sql.Types.NULL);
 			}
@@ -736,8 +751,9 @@ public class SqlUtil {
 			boolean hasSetAutoCommit = false;
 			boolean useCallHandler = true;
 			// 是否使用反调方式
-			if (insertCallhandler == null)
+			if (insertCallhandler == null) {
 				useCallHandler = false;
+			}
 			// 是否自动提交
 			if (autoCommit != null && autoCommit.booleanValue() != conn.getAutoCommit()) {
 				conn.setAutoCommit(autoCommit.booleanValue());
@@ -971,7 +987,7 @@ public class SqlUtil {
 					nodeRoute = "";
 					if (!treeTableModel.isChar() || treeTableModel.isAppendZero()) {
 						// 负数
-						if (CommonUtils.isInteger(pid) && pid.indexOf("-") == 0) {
+						if (NumberUtil.isInteger(pid) && pid.indexOf("-") == 0) {
 							nodeRoute = nodeRoute.concat("-")
 									.concat(StringUtil.addLeftZero2Len(pid.substring(1), size - 1));
 						} else {
@@ -1181,9 +1197,9 @@ public class SqlUtil {
 			}
 		}
 		PreparedStatement pst = conn.prepareStatement(executeSql);
-		Object result = SqlUtil.preparedStatementProcess(null, pst, null, new PreparedStatementResultHandler() {
+		Object result = preparedStatementProcess(null, pst, null, new PreparedStatementResultHandler() {
 			public void execute(Object obj, PreparedStatement pst, ResultSet rs) throws SQLException, IOException {
-				SqlUtil.setParamsValue(conn, dbType, pst, params, paramsType, 0);
+				setParamsValue(conn, dbType, pst, params, paramsType, 0);
 				pst.executeUpdate();
 				// 返回update的记录数量
 				this.setResult(Long.valueOf(pst.getUpdateCount()));
@@ -1210,7 +1226,6 @@ public class SqlUtil {
 		if (StringUtil.isBlank(idType))
 			return idValue;
 		// 按照优先顺序对比
-		// String idType = javaType.toLowerCase();
 		if (idType.equals("java.lang.string"))
 			return idValue.toString();
 		if (idType.equals("java.lang.integer"))
@@ -1288,5 +1303,122 @@ public class SqlUtil {
 		if (StringUtil.matches(lastSql.toString(), UNION_PATTERN))
 			return true;
 		return false;
+	}
+
+	/**
+	 * @TODO 转化对象字段名称为数据库字段名称
+	 * @param entityMeta
+	 * @param sql
+	 * @return
+	 */
+	public static String convertFieldsToColumns(EntityMeta entityMeta, String sql) {
+		String key = entityMeta.getTableName() + sql;
+		// 从缓存中直接获取,避免每次都处理提升效率
+		if (convertSqlMap.contains(key)) {
+			return convertSqlMap.get(key);
+		}
+		String[] fields = entityMeta.getFieldsArray();
+		StringBuilder sqlBuff = new StringBuilder();
+		// 末尾补齐一位空白,便于后续取index时避免越界
+		String realSql = sql.concat(" ");
+		int start = 0;
+		int index;
+		String preSql;
+		String columnName;
+		char preChar, tailChar;
+		String varSql;
+		boolean isBlank;
+		// 转换sql中的对应 vo属性为具体表字段
+		for (String field : fields) {
+			columnName = entityMeta.getColumnName(field);
+			// 对象属性和表字段一致,无需处理
+			if (!columnName.equalsIgnoreCase(field)) {
+				start = 0;
+				// 定位匹配到field,判断匹配的前一位和后一位字符,前一位是:的属于条件,且都不能是字符和数字以及下划线
+				index = StringUtil.indexOfIgnoreCase(realSql, field, start);
+				while (index != -1) {
+					preSql = realSql.substring(start, index);
+					isBlank = false;
+					if (StringUtil.matches(preSql, "\\s$")) {
+						isBlank = true;
+					}
+					varSql = preSql.trim();
+					// 首位字符不是数字(48~57)、(A-Z|a-z)字母(65~90,97~122)、下划线(95)、冒号(58)
+					preChar = varSql.charAt(varSql.length() - 1);
+					tailChar = realSql.charAt(index + field.length());
+					// 非条件参数(58为冒号)
+					if (((isBlank && preChar != 58) || (preChar > 58 && preChar < 65)
+							|| (preChar > 90 && preChar < 97 && preChar != 95) || preChar < 48 || preChar > 122)
+							&& ((tailChar > 58 && tailChar < 65) || (tailChar > 90 && tailChar < 97 && tailChar != 95)
+									|| tailChar < 48 || tailChar > 122)) {
+						sqlBuff.append(preSql).append(columnName);
+						start = index + field.length();
+					}
+					index = StringUtil.indexOfIgnoreCase(realSql, field, index + field.length());
+				}
+				if (start > 0) {
+					sqlBuff.append(realSql.substring(start));
+					realSql = sqlBuff.toString();
+					sqlBuff.delete(0, sqlBuff.length());
+				}
+			}
+		}
+		// 放入缓存
+		convertSqlMap.put(key, realSql);
+		return realSql;
+	}
+
+	/**
+	 * @TODO 组合动态条件
+	 * @param entityMeta
+	 * @return
+	 */
+	public static String wrapWhere(EntityMeta entityMeta) {
+		String[] fields = entityMeta.getFieldsArray();
+		StringBuilder sqlBuff = new StringBuilder(" 1=1 ");
+		String columnName;
+		for (String field : fields) {
+			columnName = ReservedWordsUtil.convertWord(entityMeta.getColumnName(field), null);
+			sqlBuff.append("#[and ").append(columnName).append("=:").append(field).append("]");
+		}
+		return sqlBuff.toString();
+	}
+
+	/**
+	 * @TODO 针对对象查询补全sql中的select * from table 部分,适度让代码中的sql简短一些(并不推荐)
+	 * @param sqlToyContext
+	 * @param entityClass
+	 * @param sql
+	 * @return
+	 */
+	public static String completionSql(SqlToyContext sqlToyContext, Class entityClass, String sql) {
+		if (null == entityClass || SqlConfigParseUtils.isNamedQuery(sql))
+			return sql;
+		String sqlLow = sql.toLowerCase().trim();
+		// 包含了select 或with as模式开头直接返回
+		if (sqlLow.startsWith("select") || sqlLow.startsWith("with"))
+			return sql;
+		if (!sqlToyContext.isEntity(entityClass))
+			return sql;
+		EntityMeta entityMeta = sqlToyContext.getEntityMeta(entityClass);
+		// from 开头补齐select col1,col2,...
+		if (sqlLow.startsWith("from")) {
+			return "select ".concat(entityMeta.getAllColumnNames()).concat(" ").concat(sql);
+		}
+		// 没有where和from(排除 select * from table),补齐select * from table where
+		if (!StringUtil.matches(sqlLow, "(from|where)\\W")) {
+			if (sqlLow.startsWith("and") || sqlLow.startsWith("or")) {
+				return "select ".concat(entityMeta.getAllColumnNames()).concat(" from ")
+						.concat(entityMeta.getSchemaTable()).concat(" where 1=1 ").concat(sql);
+			}
+			return "select ".concat(entityMeta.getAllColumnNames()).concat(" from ").concat(entityMeta.getSchemaTable())
+					.concat(" where ").concat(sql);
+		}
+		// where开头 补齐select * from
+		if (sqlLow.startsWith("where")) {
+			return "select ".concat(entityMeta.getAllColumnNames()).concat(" from ").concat(entityMeta.getSchemaTable())
+					.concat(" ").concat(sql);
+		}
+		return sql;
 	}
 }

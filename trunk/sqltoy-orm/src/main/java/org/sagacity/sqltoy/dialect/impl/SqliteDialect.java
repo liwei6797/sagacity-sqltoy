@@ -30,6 +30,7 @@ import org.sagacity.sqltoy.executor.QueryExecutor;
 import org.sagacity.sqltoy.model.LockMode;
 import org.sagacity.sqltoy.model.QueryResult;
 import org.sagacity.sqltoy.model.StoreResult;
+import org.sagacity.sqltoy.utils.ReservedWordsUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,7 +39,7 @@ import org.slf4j.LoggerFactory;
  * @description 基于sqlite数据库方言的各类操作实现
  * @author renfei.chen <a href="mailto:zhongxuchen@hotmail.com">联系作者</a>
  * @version Revision:v1.0,Date:2013-8-29
- * @Modification Date:2013-8-29 {填写修改说明}
+ * @Modification Date:2020-3-12 完成完整验证测试
  */
 @SuppressWarnings({ "rawtypes" })
 public class SqliteDialect implements Dialect {
@@ -89,7 +90,7 @@ public class SqliteDialect implements Dialect {
 		SqlToyResult queryParam = DialectUtils.wrapPageSqlParams(sqlToyContext, sqlToyConfig, queryExecutor,
 				sql.toString(), null, null);
 		return findBySql(sqlToyContext, sqlToyConfig, queryParam.getSql(), queryParam.getParamsValue(),
-				queryExecutor.getRowCallbackHandler(), conn, dbType, dialect, queryExecutor.getFetchSize(),
+				queryExecutor.getRowCallbackHandler(), conn, null, dbType, dialect, queryExecutor.getFetchSize(),
 				queryExecutor.getMaxRows());
 	}
 
@@ -125,7 +126,7 @@ public class SqliteDialect implements Dialect {
 		SqlToyResult queryParam = DialectUtils.wrapPageSqlParams(sqlToyContext, sqlToyConfig, queryExecutor,
 				sql.toString(), Long.valueOf(pageSize), (pageNo - 1) * pageSize);
 		return findBySql(sqlToyContext, sqlToyConfig, queryParam.getSql(), queryParam.getParamsValue(),
-				queryExecutor.getRowCallbackHandler(), conn, dbType, dialect, queryExecutor.getFetchSize(),
+				queryExecutor.getRowCallbackHandler(), conn, null, dbType, dialect, queryExecutor.getFetchSize(),
 				queryExecutor.getMaxRows());
 	}
 
@@ -156,7 +157,7 @@ public class SqliteDialect implements Dialect {
 		SqlToyResult queryParam = DialectUtils.wrapPageSqlParams(sqlToyContext, sqlToyConfig, queryExecutor,
 				sql.toString(), null, null);
 		return findBySql(sqlToyContext, sqlToyConfig, queryParam.getSql(), queryParam.getParamsValue(),
-				queryExecutor.getRowCallbackHandler(), conn, dbType, dialect, queryExecutor.getFetchSize(),
+				queryExecutor.getRowCallbackHandler(), conn, null, dbType, dialect, queryExecutor.getFetchSize(),
 				queryExecutor.getMaxRows());
 	}
 
@@ -170,7 +171,11 @@ public class SqliteDialect implements Dialect {
 	 */
 	public QueryResult findBySql(final SqlToyContext sqlToyContext, final SqlToyConfig sqlToyConfig, final String sql,
 			final Object[] paramsValue, final RowCallbackHandler rowCallbackHandler, final Connection conn,
-			final Integer dbType, final String dialect, final int fetchSize, final int maxRows) throws Exception {
+			final LockMode lockMode, final Integer dbType, final String dialect, final int fetchSize, final int maxRows)
+			throws Exception {
+		if (null != lockMode) {
+			throw new UnsupportedOperationException("sqlite lock search," + SqlToyConstants.UN_SUPPORT_MESSAGE);
+		}
 		return DialectUtils.findBySql(sqlToyContext, sqlToyConfig, sql, paramsValue, rowCallbackHandler, conn, dbType,
 				0, fetchSize, maxRows);
 	}
@@ -223,7 +228,7 @@ public class SqliteDialect implements Dialect {
 			logger.debug("修改记录数为:{}", updateCnt);
 			return updateCnt;
 		}
-		Long saveCnt = this.saveAllIgnoreExist(sqlToyContext, entities, batchSize, reflectPropertyHandler, conn, dbType,
+		Long saveCnt = saveAllIgnoreExist(sqlToyContext, entities, batchSize, reflectPropertyHandler, conn, dbType,
 				dialect, autoCommit, tableName);
 		logger.debug("修改记录数为:{},新建记录数为:{}", updateCnt, saveCnt);
 		return updateCnt + saveCnt;
@@ -264,13 +269,7 @@ public class SqliteDialect implements Dialect {
 		EntityMeta entityMeta = sqlToyContext.getEntityMeta(entity.getClass());
 		// 获取loadsql(loadsql 可以通过@loadSql进行改变，所以需要sqltoyContext重新获取)
 		SqlToyConfig sqlToyConfig = sqlToyContext.getSqlToyConfig(entityMeta.getLoadSql(tableName), SqlType.search);
-		String loadSql = sqlToyConfig.getSql(dialect);
-		// switch (lockMode) {
-		// case UPGRADE_NOWAIT:
-		// case UPGRADE:
-		// loadSql = loadSql + " for update";
-		// break;
-		// }
+		String loadSql = ReservedWordsUtil.convertSql(sqlToyConfig.getSql(dialect), dbType);
 		return (Serializable) DialectUtils.load(sqlToyContext, sqlToyConfig, loadSql, entityMeta, entity, cascadeTypes,
 				conn, dbType);
 	}
@@ -294,7 +293,7 @@ public class SqliteDialect implements Dialect {
 					entities.get(0).getClass().getName() + "Entity Object hasn't primary key,cann't use load method!");
 		}
 		StringBuilder loadSql = new StringBuilder();
-		loadSql.append("select ").append(entityMeta.getAllColumnNames());
+		loadSql.append("select ").append(ReservedWordsUtil.convertSimpleSql(entityMeta.getAllColumnNames(), dbType));
 		loadSql.append(" from ");
 		// sharding 分表情况下会传递表名
 		loadSql.append(entityMeta.getSchemaTable(tableName));
@@ -305,17 +304,9 @@ public class SqliteDialect implements Dialect {
 			if (i > 0) {
 				loadSql.append(" and ");
 			}
-			loadSql.append(entityMeta.getColumnName(field));
+			loadSql.append(ReservedWordsUtil.convertWord(entityMeta.getColumnName(field), dbType));
 			loadSql.append(" in (:").append(field).append(") ");
 		}
-		// if (lockMode != null) {
-		// switch (lockMode) {
-		// case UPGRADE_NOWAIT:
-		// case UPGRADE:
-		// loadSql.append(" for update with rs ");
-		// break;
-		// }
-		// }
 		return DialectUtils.loadAll(sqlToyContext, loadSql.toString(), entities, cascadeTypes, conn, dbType);
 	}
 

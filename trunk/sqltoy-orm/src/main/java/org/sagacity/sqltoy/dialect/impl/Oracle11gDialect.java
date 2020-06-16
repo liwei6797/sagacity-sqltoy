@@ -36,8 +36,8 @@ import org.slf4j.LoggerFactory;
 /**
  * @project sqltoy-orm
  * @description oracle11g以及以下版本数据库的各类分页、取随机数、saveOrUpdate,lock机制实现
- * @author zhongxu <a href="mailto:zhongxuchen@gmail.com">联系作者</a>
- * @version id:OracleDialect.java,Revision:v1.0,Date:2013-3-21
+ * @author zhongxuchen <a href="mailto:zhongxuchen@gmail.com">联系作者</a>
+ * @version id:Oracle11gDialect.java,Revision:v1.0,Date:2013-3-21
  */
 @SuppressWarnings({ "rawtypes" })
 public class Oracle11gDialect implements Dialect {
@@ -164,9 +164,22 @@ public class Oracle11gDialect implements Dialect {
 	 */
 	public QueryResult findBySql(final SqlToyContext sqlToyContext, final SqlToyConfig sqlToyConfig, final String sql,
 			final Object[] paramsValue, final RowCallbackHandler rowCallbackHandler, final Connection conn,
-			final Integer dbType, final String dialect, final int fetchSize, final int maxRows) throws Exception {
-		return DialectUtils.findBySql(sqlToyContext, sqlToyConfig, sql, paramsValue, rowCallbackHandler, conn, dbType,
-				0, fetchSize, maxRows);
+			final LockMode lockMode, final Integer dbType, final String dialect, final int fetchSize, final int maxRows)
+			throws Exception {
+		String realSql = sql;
+		if (lockMode != null) {
+			switch (lockMode) {
+			case UPGRADE_NOWAIT: {
+				realSql = realSql.concat(" for update nowait ");
+				break;
+			}
+			case UPGRADE:
+				realSql = realSql.concat(" for update ");
+				break;
+			}
+		}
+		return DialectUtils.findBySql(sqlToyContext, sqlToyConfig, realSql, paramsValue, rowCallbackHandler, conn,
+				dbType, 0, fetchSize, maxRows);
 	}
 
 	/*

@@ -3,27 +3,27 @@
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>com.sagframe</groupId>
-	<version>4.11.6</version>
+	<version>4.12.11</version>
 	<name>sagacity-sqltoy</name>
 	<description>sagacity-sqltoy</description>
 	<artifactId>sagacity-sqltoy</artifactId>
 	<url>https://github.com/chenrenfei/sagacity-sqltoy</url>
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-		<spring-framework.version>5.2.5.RELEASE</spring-framework.version>
-		<spring-data-redis.version>2.2.6.RELEASE</spring-data-redis.version>
-		<spring-data-mongo.version>2.2.6.RELEASE</spring-data-mongo.version>
+		<spring-framework.version>5.2.7.RELEASE</spring-framework.version>
+		<spring-data-redis.version>2.3.1.RELEASE</spring-data-redis.version>
+		<spring-data-mongo.version>3.0.1.RELEASE</spring-data-mongo.version>
 		<ojdbc.version>19.3.0.0</ojdbc.version>
 		<ehcache.version>3.8.1</ehcache.version>
 		<httpclient.version>4.5.12</httpclient.version>
 		<httpclient-core.version>4.4.13</httpclient-core.version>
-		<elastic-rest-client.version>7.6.2</elastic-rest-client.version>
-		<fastjson.version>1.2.68</fastjson.version>
-		<mongo.version>3.12.2</mongo.version>
-		<junit-jupiter.version>5.6.1</junit-jupiter.version>
-		<junit-platform.version>1.6.1</junit-platform.version>
+		<elastic-rest-client.version>7.7.1</elastic-rest-client.version>
+		<fastjson.version>1.2.71</fastjson.version>
+		<mongo.version>3.12.5</mongo.version>
+		<junit-jupiter.version>5.6.2</junit-jupiter.version>
+		<junit-platform.version>1.6.2</junit-platform.version>
 		<slf4j.version>1.7.30</slf4j.version>
-		<log4j.version>2.13.1</log4j.version>
+		<log4j.version>2.13.3</log4j.version>
 	</properties>
 	<licenses>
 		<license>
@@ -56,6 +56,13 @@
 			<id>sonatype-nexus-staging</id>
 			<url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
 		</repository>
+
+
+		<!-- <repository> <id>nexus-release</id> <name>3rd party</name> <url>https://nexus.1chemic.com/repository/releases/</url> 
+			</repository> <snapshotRepository> <id>nexus-snapshots</id> <name>Department 
+			Repository</name> <url>https://nexus.1chemic.com/repository/snapshots/</url> 
+			</snapshotRepository> -->
+
 	</distributionManagement>
 	<dependencies>
 		<dependency>
@@ -223,7 +230,7 @@
 			<version>${log4j.version}</version>
 			<optional>true</optional>
 		</dependency>
-		<dependency> <!-- 桥接：告诉Slf4j使用Log4j2 -->
+		<dependency>
 			<groupId>org.apache.logging.log4j</groupId>
 			<artifactId>log4j-slf4j-impl</artifactId>
 			<version>${log4j.version}</version>
@@ -278,7 +285,7 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-source-plugin</artifactId>
-				<version>3.2.0</version>
+				<version>3.2.1</version>
 				<executions>
 					<execution>
 						<id>attach-sources</id>

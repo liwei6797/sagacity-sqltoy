@@ -25,6 +25,7 @@ import org.sagacity.sqltoy.executor.QueryExecutor;
 import org.sagacity.sqltoy.model.LockMode;
 import org.sagacity.sqltoy.model.QueryResult;
 import org.sagacity.sqltoy.model.StoreResult;
+import org.sagacity.sqltoy.utils.ReservedWordsUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,6 +35,8 @@ import org.slf4j.LoggerFactory;
  *              NOTHING/UPDATE]功能生效
  * @author zhongxuchen <a href="mailto:zhongxuchen@gmail.com">联系作者</a>
  * @version id:PostgreSqlDialect.java,Revision:v1.0,Date:2015年8月10日
+ * @Modification Date:2019-3-12 修复saveOrUpdate的缺陷
+ * @Modification Date:2020-06-12 修复10+版本对identity主键生成的策略
  */
 @SuppressWarnings({ "rawtypes" })
 public class PostgreSqlDialect implements Dialect {
@@ -103,10 +106,22 @@ public class PostgreSqlDialect implements Dialect {
 	 */
 	@Override
 	public QueryResult findBySql(SqlToyContext sqlToyContext, SqlToyConfig sqlToyConfig, String sql,
-			Object[] paramsValue, RowCallbackHandler rowCallbackHandler, final Connection conn, final Integer dbType,
-			final String dialect, final int fetchSize, final int maxRows) throws Exception {
-		return DialectUtils.findBySql(sqlToyContext, sqlToyConfig, sql, paramsValue, rowCallbackHandler, conn, dbType,
-				0, fetchSize, maxRows);
+			Object[] paramsValue, RowCallbackHandler rowCallbackHandler, final Connection conn, final LockMode lockMode,
+			final Integer dbType, final String dialect, final int fetchSize, final int maxRows) throws Exception {
+		String realSql = sql;
+		if (lockMode != null) {
+			switch (lockMode) {
+			case UPGRADE_NOWAIT: {
+				realSql = realSql + " for update nowait ";
+				break;
+			}
+			case UPGRADE:
+				realSql = realSql + " for update ";
+				break;
+			}
+		}
+		return DialectUtils.findBySql(sqlToyContext, sqlToyConfig, realSql, paramsValue, rowCallbackHandler, conn,
+				dbType, 0, fetchSize, maxRows);
 	}
 
 	/*
@@ -137,7 +152,7 @@ public class PostgreSqlDialect implements Dialect {
 		EntityMeta entityMeta = sqlToyContext.getEntityMeta(entity.getClass());
 		// 获取loadsql(loadsql 可以通过@loadSql进行改变，所以需要sqltoyContext重新获取)
 		SqlToyConfig sqlToyConfig = sqlToyContext.getSqlToyConfig(entityMeta.getLoadSql(tableName), SqlType.search);
-		String loadSql = sqlToyConfig.getSql(dialect);
+		String loadSql = ReservedWordsUtil.convertSql(sqlToyConfig.getSql(dialect), dbType);
 		if (lockMode != null) {
 			switch (lockMode) {
 			case UPGRADE_NOWAIT:
@@ -171,7 +186,7 @@ public class PostgreSqlDialect implements Dialect {
 					entities.get(0).getClass().getName() + " Entity Object hasn't primary key,cann't use load method!");
 		}
 		StringBuilder loadSql = new StringBuilder();
-		loadSql.append("select ").append(entityMeta.getAllColumnNames());
+		loadSql.append("select ").append(ReservedWordsUtil.convertSimpleSql(entityMeta.getAllColumnNames(), dbType));
 		loadSql.append(" from ");
 		// sharding 分表情况下会传递表名
 		loadSql.append(entityMeta.getSchemaTable(tableName));
@@ -182,7 +197,7 @@ public class PostgreSqlDialect implements Dialect {
 			if (i > 0) {
 				loadSql.append(" and ");
 			}
-			loadSql.append(entityMeta.getColumnName(field));
+			loadSql.append(ReservedWordsUtil.convertWord(entityMeta.getColumnName(field), dbType));
 			loadSql.append(" in (:").append(field).append(") ");
 		}
 		if (lockMode != null) {
@@ -242,10 +257,9 @@ public class PostgreSqlDialect implements Dialect {
 						PKStrategy pkStrategy = entityMeta.getIdStrategy();
 						String sequence = "nextval('" + entityMeta.getSequence() + "')";
 						if (pkStrategy != null && pkStrategy.equals(PKStrategy.IDENTITY)) {
+							// 伪造成sequence模式
 							pkStrategy = PKStrategy.SEQUENCE;
-							sequence = "nextval("
-									+ entityMeta.getFieldsMeta().get(entityMeta.getIdArray()[0]).getDefaultValue()
-									+ ")";
+							sequence = "DEFAULT";
 						}
 						return PostgreSqlDialectUtils.getSaveOrUpdateSql(dbType, entityMeta, pkStrategy, sequence,
 								forceUpdateFields, null);
@@ -301,13 +315,14 @@ public class PostgreSqlDialect implements Dialect {
 			throws Exception {
 		Long updateCnt = DialectUtils.updateAll(sqlToyContext, entities, batchSize, forceUpdateFields,
 				reflectPropertyHandler, NVL_FUNCTION, conn, dbType, autoCommit, tableName, true);
-		logger.debug("修改记录数为:{}", updateCnt);
 		// 如果修改的记录数量跟总记录数量一致,表示全部是修改
-		if (updateCnt >= entities.size())
+		if (updateCnt >= entities.size()) {
+			logger.debug("修改记录数为:{}", updateCnt);
 			return updateCnt;
-		Long saveCnt = this.saveAllIgnoreExist(sqlToyContext, entities, batchSize, reflectPropertyHandler, conn, dbType,
+		}
+		Long saveCnt = saveAllIgnoreExist(sqlToyContext, entities, batchSize, reflectPropertyHandler, conn, dbType,
 				dialect, autoCommit, tableName);
-		logger.debug("新建记录数为:{}", saveCnt);
+		logger.debug("修改记录数为:{},新建记录数为:{}", updateCnt, saveCnt);
 		return updateCnt + saveCnt;
 	}
 
@@ -330,10 +345,9 @@ public class PostgreSqlDialect implements Dialect {
 						PKStrategy pkStrategy = entityMeta.getIdStrategy();
 						String sequence = "nextval('" + entityMeta.getSequence() + "')";
 						if (pkStrategy != null && pkStrategy.equals(PKStrategy.IDENTITY)) {
+							// 伪造成sequence模式
 							pkStrategy = PKStrategy.SEQUENCE;
-							sequence = "nextval("
-									+ entityMeta.getFieldsMeta().get(entityMeta.getIdArray()[0]).getDefaultValue()
-									+ ")";
+							sequence = "DEFAULT";
 						}
 						return PostgreSqlDialectUtils.getSaveIgnoreExist(dbType, entityMeta, pkStrategy, sequence,
 								tableName);

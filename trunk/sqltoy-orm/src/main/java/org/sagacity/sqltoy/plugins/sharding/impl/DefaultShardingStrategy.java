@@ -15,8 +15,8 @@ import org.sagacity.sqltoy.model.IgnoreCaseLinkedMap;
 import org.sagacity.sqltoy.model.ShardingDBModel;
 import org.sagacity.sqltoy.plugins.sharding.IdleConnectionMonitor;
 import org.sagacity.sqltoy.plugins.sharding.ShardingStrategy;
-import org.sagacity.sqltoy.utils.CommonUtils;
 import org.sagacity.sqltoy.utils.DateUtil;
+import org.sagacity.sqltoy.utils.NumberUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -90,8 +90,9 @@ public class DefaultShardingStrategy implements ShardingStrategy, ApplicationCon
 		// 检测时间小于等于零,则表示不做自动检测
 		if (checkSeconds <= 0)
 			return;
-		if (checkSeconds < 60)
+		if (checkSeconds < 60) {
 			checkSeconds = 60;
+		}
 
 		IdleConnectionMonitor monitor = new IdleConnectionMonitor(applicationContext, dataSourceWeightConfig, weights,
 				60, checkSeconds);
@@ -132,8 +133,9 @@ public class DefaultShardingStrategy implements ShardingStrategy, ApplicationCon
 			}
 		}
 		// 返回null,表示使用原表
-		if (index == -1)
+		if (index == -1) {
 			return null;
+		}
 		if (index > shardingTable.length - 1) {
 			return shardingTable[shardingTable.length - 1].trim();
 		}
@@ -151,8 +153,9 @@ public class DefaultShardingStrategy implements ShardingStrategy, ApplicationCon
 	public ShardingDBModel getShardingDB(SqlToyContext sqlToyContext, Class entityClass, String tableOrSql,
 			String decisionType, IgnoreCaseLinkedMap<String, Object> paramsMap) {
 		// 为null则使用service或dao中默认注入的dataSource
-		if (dataSourceWeight == null || dataSourceWeight.isEmpty())
+		if (dataSourceWeight == null || dataSourceWeight.isEmpty()) {
 			return null;
+		}
 		return getDataSource();
 	}
 
@@ -166,7 +169,7 @@ public class DefaultShardingStrategy implements ShardingStrategy, ApplicationCon
 		String chooseDataSource = null;
 		// 根据权重进行随机取具体哪个dataSource
 		if (dataSourceWeightConfig.length > 1) {
-			index = CommonUtils.getProbabilityIndex(weights);
+			index = NumberUtil.getProbabilityIndex(weights);
 		}
 		chooseDataSource = dataSourceWeightConfig[index][0].toString();
 		logger.debug("本次sharding选择中的数据库为:{}", chooseDataSource);

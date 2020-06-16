@@ -10,6 +10,10 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.sagacity.sqltoy.dao.SqlToyLazyDao;
+import org.sagacity.sqltoy.model.EntityQuery;
+import org.sagacity.sqltoy.model.EntityUpdate;
+import org.sagacity.sqltoy.model.LockMode;
 import org.sagacity.sqltoy.service.SqlToyCRUDService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -33,6 +37,9 @@ import com.sagframe.sqltoy.utils.ShowCaseUtils;
 public class CrudCaseServiceTest {
 	@Autowired
 	private SqlToyCRUDService sqlToyCRUDService;
+	
+	@Autowired
+	private SqlToyLazyDao sqlToyLazyDao;
 
 	/**
 	 * 创建一条员工记录
@@ -100,14 +107,80 @@ public class CrudCaseServiceTest {
 		sqlToyCRUDService.saveOrUpdate(staffInfo);
 	}
 
+	/**
+	 * 通过where设置条件，对单表对象进行查询
+	 */
 	@Test
-	public void saveOrUpdateAll() {
+	public void findEntityByWhere() {
+		List<StaffInfoVO> staffVOs = sqlToyLazyDao.findEntity(StaffInfoVO.class,
+				EntityQuery.create().where("#[`status` in (?)]#[and name like ?]").values(new Object[] { 1, 2 }, null));
+		System.err.println(JSON.toJSONString(staffVOs));
+	}
 
+	/**
+	 * 单表查询通过对象传参数据且不设置where 场景，自动根据对象属性值组织sql(非推荐功能)
+	 */
+	@Test
+	public void findEntityByNoWhere() {
+		List<StaffInfoVO> staffVOs = sqlToyLazyDao.findEntity(StaffInfoVO.class,
+				EntityQuery.create().values(new StaffInfoVO().setStatus(1).setEmail("test3@aliyun.com")));
+		System.err.println(JSON.toJSONString(staffVOs));
+	}
+	
+	/**
+	 * findEntity 模式,简化sql编写模式,面向接口服务层提供快捷数据查询和处理
+	 * 1、通过where指定条件
+	 * 2、支持lock
+	 * 3、支持order by (order by 在接口服务 层意义不大)
+	 * 4、自动将对象属性映射成表字段
+	 */
+	@Test
+	public void findEntity() {
+		//条件利用sqltoy特有的#[]充当动态条件判断,#[]是支持嵌套的
+		List<StaffInfoVO> staffVOs = sqlToyLazyDao.findEntity(StaffInfoVO.class,
+				EntityQuery.create().where("#[staffName like ?] #[ and status=?]").values("陈", 1)
+				.lock(LockMode.UPGRADE).orderBy("staffName").orderByDesc("createTime"));
+		System.err.println(JSON.toJSONString(staffVOs));
+	}
+
+	/**
+	 * 指定where 并提供对象传参
+	 */
+	@Test
+	public void findEntityByVO() {
+		List<StaffInfoVO> staffVOs = sqlToyLazyDao.findEntity(StaffInfoVO.class,
+				EntityQuery.create().where("#[staffName like :staffName] #[ and status=:status]")
+						.values(new StaffInfoVO().setStatus(1).setEmail("test3@aliyun.com")));
+		System.err.println(JSON.toJSONString(staffVOs));
+	}
+
+	
+	/**
+	 * 通过参数传值进行删除，where必须有值(后端会校验)，delete操作属于危险操作
+	 */
+	@Test
+	public void deleteEntity() {
+		Long deleteCount = sqlToyLazyDao.deleteByQuery(StaffInfoVO.class,
+				EntityQuery.create().where("status=:status").values(new StaffInfoVO().setStatus(1)));
+		System.err.println(deleteCount);
+	}
+
+	/**
+	 * update 操作where也必须有值，以防危险操作
+	 */
+	@Test
+	public void updateEntity() {
+		Long updateCount = sqlToyLazyDao.updateByQuery(StaffInfoVO.class,
+				EntityUpdate.create().set("staffName", "张三").where("staffName like ? and status=?").values("陈", 1));
+		System.err.println(updateCount);
 	}
 
 	@Test
-	public void saveAll() {
-
+	public void updateEntityVO() {
+		Long updateCount = sqlToyLazyDao.updateByQuery(StaffInfoVO.class,
+				EntityUpdate.create().set("staffName", "张三").where("staffName like :staffName and status=:status")
+						.values(new StaffInfoVO().setStaffName("陈").setStatus(1)));
+		System.err.println(updateCount);
 	}
 
 	@Test

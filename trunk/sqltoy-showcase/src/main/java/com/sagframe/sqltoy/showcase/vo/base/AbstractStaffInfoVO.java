@@ -4,19 +4,18 @@
 package com.sagframe.sqltoy.showcase.vo.base;
 
 import java.io.Serializable;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-
-import org.sagacity.sqltoy.config.annotation.Column;
 import org.sagacity.sqltoy.config.annotation.Entity;
 import org.sagacity.sqltoy.config.annotation.Id;
+import org.sagacity.sqltoy.config.annotation.Column;
+import java.time.LocalDate;
+import java.sql.Blob;
+import java.time.LocalDateTime;
 
 
 /**
  * @project sqltoy-showcase
  * @version 1.0.0
- * Table: sqltoy_staff_info,Remark:员工信息表 
- * pk_constraint only for postgresql  
+ * Table: sqltoy_staff_info,Remark:员工信息表  
  */
 @Entity(tableName="sqltoy_staff_info",pk_constraint="PRIMARY")
 public abstract class AbstractStaffInfoVO implements Serializable,
@@ -161,7 +160,6 @@ public abstract class AbstractStaffInfoVO implements Serializable,
 	protected Integer status;
 	
 
-
 	/** default constructor */
 	public AbstractStaffInfoVO() {
 	}
@@ -217,8 +215,9 @@ public abstract class AbstractStaffInfoVO implements Serializable,
 	/**
 	 *@param staffId the staffId to set
 	 */
-	public void setStaffId(String staffId) {
+	public AbstractStaffInfoVO setStaffId(String staffId) {
 		this.staffId=staffId;
+		return this;
 	}
 		
 	/**
@@ -231,8 +230,9 @@ public abstract class AbstractStaffInfoVO implements Serializable,
 	/**
 	 *@param staffCode the staffCode to set
 	 */
-	public void setStaffCode(String staffCode) {
+	public AbstractStaffInfoVO setStaffCode(String staffCode) {
 		this.staffCode=staffCode;
+		return this;
 	}
 		
 	/**
@@ -245,8 +245,9 @@ public abstract class AbstractStaffInfoVO implements Serializable,
 	/**
 	 *@param staffName the staffName to set
 	 */
-	public void setStaffName(String staffName) {
+	public AbstractStaffInfoVO setStaffName(String staffName) {
 		this.staffName=staffName;
+		return this;
 	}
 		
 	/**
@@ -259,8 +260,9 @@ public abstract class AbstractStaffInfoVO implements Serializable,
 	/**
 	 *@param organId the organId to set
 	 */
-	public void setOrganId(String organId) {
+	public AbstractStaffInfoVO setOrganId(String organId) {
 		this.organId=organId;
+		return this;
 	}
 		
 	/**
@@ -273,8 +275,9 @@ public abstract class AbstractStaffInfoVO implements Serializable,
 	/**
 	 *@param sexType the sexType to set
 	 */
-	public void setSexType(String sexType) {
+	public AbstractStaffInfoVO setSexType(String sexType) {
 		this.sexType=sexType;
+		return this;
 	}
 		
 	/**
@@ -287,8 +290,9 @@ public abstract class AbstractStaffInfoVO implements Serializable,
 	/**
 	 *@param birthday the birthday to set
 	 */
-	public void setBirthday(LocalDate birthday) {
+	public AbstractStaffInfoVO setBirthday(LocalDate birthday) {
 		this.birthday=birthday;
+		return this;
 	}
 		
 	/**
@@ -301,8 +305,9 @@ public abstract class AbstractStaffInfoVO implements Serializable,
 	/**
 	 *@param entryDate the entryDate to set
 	 */
-	public void setEntryDate(LocalDate entryDate) {
+	public AbstractStaffInfoVO setEntryDate(LocalDate entryDate) {
 		this.entryDate=entryDate;
+		return this;
 	}
 		
 	/**
@@ -315,8 +320,9 @@ public abstract class AbstractStaffInfoVO implements Serializable,
 	/**
 	 *@param termDate the termDate to set
 	 */
-	public void setTermDate(LocalDate termDate) {
+	public AbstractStaffInfoVO setTermDate(LocalDate termDate) {
 		this.termDate=termDate;
+		return this;
 	}
 		
 	/**
@@ -329,8 +335,9 @@ public abstract class AbstractStaffInfoVO implements Serializable,
 	/**
 	 *@param photo the photo to set
 	 */
-	public void setPhoto(byte[] photo) {
+	public AbstractStaffInfoVO setPhoto(byte[] photo) {
 		this.photo=photo;
+		return this;
 	}
 		
 	/**
@@ -343,8 +350,9 @@ public abstract class AbstractStaffInfoVO implements Serializable,
 	/**
 	 *@param country the country to set
 	 */
-	public void setCountry(String country) {
+	public AbstractStaffInfoVO setCountry(String country) {
 		this.country=country;
+		return this;
 	}
 		
 	/**
@@ -357,8 +365,9 @@ public abstract class AbstractStaffInfoVO implements Serializable,
 	/**
 	 *@param censusRegister the censusRegister to set
 	 */
-	public void setCensusRegister(String censusRegister) {
+	public AbstractStaffInfoVO setCensusRegister(String censusRegister) {
 		this.censusRegister=censusRegister;
+		return this;
 	}
 		
 	/**
@@ -371,8 +380,9 @@ public abstract class AbstractStaffInfoVO implements Serializable,
 	/**
 	 *@param address the address to set
 	 */
-	public void setAddress(String address) {
+	public AbstractStaffInfoVO setAddress(String address) {
 		this.address=address;
+		return this;
 	}
 		
 	/**
@@ -385,8 +395,9 @@ public abstract class AbstractStaffInfoVO implements Serializable,
 	/**
 	 *@param email the email to set
 	 */
-	public void setEmail(String email) {
+	public AbstractStaffInfoVO setEmail(String email) {
 		this.email=email;
+		return this;
 	}
 		
 	/**
@@ -399,8 +410,9 @@ public abstract class AbstractStaffInfoVO implements Serializable,
 	/**
 	 *@param telNo the telNo to set
 	 */
-	public void setTelNo(String telNo) {
+	public AbstractStaffInfoVO setTelNo(String telNo) {
 		this.telNo=telNo;
+		return this;
 	}
 		
 	/**
@@ -413,8 +425,9 @@ public abstract class AbstractStaffInfoVO implements Serializable,
 	/**
 	 *@param post the post to set
 	 */
-	public void setPost(String post) {
+	public AbstractStaffInfoVO setPost(String post) {
 		this.post=post;
+		return this;
 	}
 		
 	/**
@@ -427,8 +440,9 @@ public abstract class AbstractStaffInfoVO implements Serializable,
 	/**
 	 *@param postGrade the postGrade to set
 	 */
-	public void setPostGrade(String postGrade) {
+	public AbstractStaffInfoVO setPostGrade(String postGrade) {
 		this.postGrade=postGrade;
+		return this;
 	}
 		
 	/**
@@ -441,8 +455,9 @@ public abstract class AbstractStaffInfoVO implements Serializable,
 	/**
 	 *@param createBy the createBy to set
 	 */
-	public void setCreateBy(String createBy) {
+	public AbstractStaffInfoVO setCreateBy(String createBy) {
 		this.createBy=createBy;
+		return this;
 	}
 		
 	/**
@@ -455,8 +470,9 @@ public abstract class AbstractStaffInfoVO implements Serializable,
 	/**
 	 *@param createTime the createTime to set
 	 */
-	public void setCreateTime(LocalDateTime createTime) {
+	public AbstractStaffInfoVO setCreateTime(LocalDateTime createTime) {
 		this.createTime=createTime;
+		return this;
 	}
 		
 	/**
@@ -469,8 +485,9 @@ public abstract class AbstractStaffInfoVO implements Serializable,
 	/**
 	 *@param updateBy the updateBy to set
 	 */
-	public void setUpdateBy(String updateBy) {
+	public AbstractStaffInfoVO setUpdateBy(String updateBy) {
 		this.updateBy=updateBy;
+		return this;
 	}
 		
 	/**
@@ -483,8 +500,9 @@ public abstract class AbstractStaffInfoVO implements Serializable,
 	/**
 	 *@param updateTime the updateTime to set
 	 */
-	public void setUpdateTime(LocalDateTime updateTime) {
+	public AbstractStaffInfoVO setUpdateTime(LocalDateTime updateTime) {
 		this.updateTime=updateTime;
+		return this;
 	}
 		
 	/**
@@ -497,8 +515,9 @@ public abstract class AbstractStaffInfoVO implements Serializable,
 	/**
 	 *@param status the status to set
 	 */
-	public void setStatus(Integer status) {
+	public AbstractStaffInfoVO setStatus(Integer status) {
 		this.status=status;
+		return this;
 	}
 		
 	/**
