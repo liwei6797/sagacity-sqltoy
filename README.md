@@ -1,5 +1,14 @@
-# 使用文档(完善进度73%,可以预览)
+# 在线文档(完善进度75%,可以预览)
 ## [https://chenrenfei.github.io/sqltoy/](https://chenrenfei.github.io/sqltoy/)
+
+# WORD版详细文档(完整)
+## 请见:docs/睿智平台SqlToy4.12使用手册.doc
+
+# 作者和团队说明
+* 作者和团队一直从事信息化系统建设和数据平台建设
+* 目前就职于中化石化销售有限公司负责ERP项目和数据平台
+* 2014~2018年在拉卡拉支付集团负责数据部门，运用oracle、hive、kafka、spark、mongo、es等技术体系为各个部门、客户、代理商、其他业务系统提数据服务。
+* 核心作品:sqltoy-orm、nebula星云报表平台、sagacity-cronjob调度框架、sagframe-portal
 
 #  QQ交流群:531812227 
 
@@ -44,10 +53,11 @@
    * postgresql 支持9.5 以及以上版本
    * sqlserver 支持2008到2019版本，建议使用2012或以上版本
    * sqlite
-   * sybase_iq 支持15.4以上版本，建议使用16版本
+   * DM达梦数据库
    * elasticsearch 只支持查询,版本支持5.7+版本，建议使用7.3以上版本 
    * clickhouse 
    * mongodb (只支持查询)
+   * sybase_iq 支持15.4以上版本，建议使用16版本
    
 ## 1.2 是否重复造轮子，我只想首先说五个特性：
  * 根本上杜绝了sql注入问题，sql支持写注释、sql文件动态更新检测，开发时sql变更会自动重载
@@ -69,6 +79,9 @@ sqltoy-orm 来源于个人亲身经历的无数个项目的总结和思考，尤
 * 条件判断保留#[@if(:param>=xx ||:param<=xx1) sql语句] 这种@if()高度灵活模式,为特殊复杂场景下提供万能钥匙
 
 ```
+<sql id="show_case">
+<value>
+<![CDATA[
 select 	*
 from sqltoy_device_order_info t 
 where #[t.ORDER_ID=:orderId]
@@ -76,11 +89,15 @@ where #[t.ORDER_ID=:orderId]
       #[and t.STAFF_ID in (:staffIds)]
       #[and t.TRANS_DATE>=:beginDate]
       #[and t.TRANS_DATE<:endDate]  
+]]>	
+</value>
+</sql>
 ```
 
 * mybatis的写法(一板一眼很工程化),sqltoy比这个香多少倍?其实根本就无法比,因为mybatis这种写法就是一个负数!
 
 ```
+<select id="show_case" resultMap="BaseResultMap">
  select *
  from sqltoy_device_order_info t 
  <where>
@@ -106,6 +123,7 @@ where #[t.ORDER_ID=:orderId]
 	and t.TRANS_DATE<#{endDate}
     </if>
 </where>
+</select>
 ```
 
 ## 2.2 天然防止sql注入,执行过程:

@@ -7,8 +7,8 @@
 	<property name="project.name" value="sqltoy-showcase" />
 	<property name="project.package" value="com.sagframe.sqltoy" />
 	<property name="include.schema" value="false" />
-	<!-- set method 是否支持返回对象自身(默认是true),即：public VO  setName(String name){this.name=name;return this;} -->
-	<property name="field.support.linked.set" value="false" />
+	<!-- set method 是否支持返回对象自身(默认是true),即: public VO  setName(String name){this.name=name;return this;} -->
+	<property name="field.support.linked.set" value="true" />
 	<!-- oracle支持schema,mysql\DB2:catalog -->
 	<datasource name="sqltoy" url="${jdbc.connection.url}"
 		driver="${jdbc.connection.driver_class}" catalog="${jdbc.connection.catalog}"
@@ -37,6 +37,12 @@
 	<!-- 基于redis产生有规则的业务主键 -->
 	<business-primary-key>
 		<!-- 1位购销标志_2位设备分类代码_6位日期_3位流水 (如果当天超过3位会自动扩展到4位) -->
+		<!-- 业务主键可以充当实际的主键，如果字段是主键会覆盖原来的主键策略 -->
+		<!-- 包含的三个宏:
+		      @substr(${field},startIndex,length) 
+		      @case(value,case1,value1,case2,value2,other)  
+		      @df(yyMMdd) 日期格式化,如果不需要加入日期可以用@df('') 
+		-->
 		<table name="SQLTOY_DEVICE_ORDER_INFO" column="ORDER_ID" generator="redis"
 			signature="${psType}@case(${deviceType},PC,PC,NET,NT,OFFICE,OF,SOFTWARE,SF,OT)@day(yyMMdd)"
 			related-columns="psType,deviceType" length="12" />

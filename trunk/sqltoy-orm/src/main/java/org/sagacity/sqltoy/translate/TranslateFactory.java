@@ -87,13 +87,14 @@ public class TranslateFactory {
 			Timestamp preCheckTime) throws Exception {
 		final SqlToyConfig sqlToyConfig = sqlToyContext.getSqlToyConfig(config.getSql(), SqlType.search);
 		String dataSourceName = config.getDataSource();
-		if (dataSourceName == null)
+		if (dataSourceName == null) {
 			dataSourceName = sqlToyConfig.getDataSource();
+		}
 		return DialectFactory.getInstance()
 				.findByQuery(sqlToyContext,
 						new QueryExecutor(config.getSql(), sqlToyConfig.getParamsName(),
 								new Object[] { new Date(preCheckTime.getTime()) }),
-						sqlToyConfig, StringUtil.isBlank(dataSourceName) ? sqlToyContext.getDefaultDataSource()
+						sqlToyConfig, null, StringUtil.isBlank(dataSourceName) ? sqlToyContext.getDefaultDataSource()
 								: sqlToyContext.getDataSource(dataSourceName))
 				.getRows();
 	}
@@ -154,10 +155,12 @@ public class TranslateFactory {
 	 * @return
 	 */
 	private static List<CacheCheckResult> wrapClearCheckResult(List result, CheckerConfigModel config) {
-		if (result == null || result.isEmpty())
+		if (result == null || result.isEmpty()) {
 			return null;
-		if (result.get(0) instanceof CacheCheckResult)
+		}
+		if (result.get(0) instanceof CacheCheckResult) {
 			return result;
+		}
 		List<Object[]> cacheSet = null;
 		if (result.get(0) instanceof Object[]) {
 			cacheSet = result;
@@ -190,10 +193,12 @@ public class TranslateFactory {
 	 * @return
 	 */
 	private static List<CacheCheckResult> wrapIncrementCheckResult(List result, CheckerConfigModel config) {
-		if (result == null || result.isEmpty())
+		if (result == null || result.isEmpty()) {
 			return null;
-		if (result.get(0) instanceof CacheCheckResult)
+		}
+		if (result.get(0) instanceof CacheCheckResult) {
 			return result;
+		}
 		List<Object[]> cacheSet = null;
 		if (result.get(0) instanceof List) {
 			cacheSet = CollectionUtil.innerListToArray(result);
@@ -251,7 +256,12 @@ public class TranslateFactory {
 			logger.error("获取缓存数据失败,返回结果应该是List<List> 或List<Object[]> 或 Map<String,Object[]> 类型,错误信息:{}",
 					e.getMessage());
 		}
-		return wrapCacheResult(result, cacheModel);
+		HashMap<String, Object[]> cacheData = wrapCacheResult(result, cacheModel);
+		// 增加错误日志提醒
+		if (cacheData == null || cacheData.isEmpty()) {
+			logger.error("缓存cacheName={} 数据集为空,请检查对应的配置和查询逻辑是否正确!", cacheModel.getCache());
+		}
+		return cacheData;
 	}
 
 	/**
@@ -277,7 +287,7 @@ public class TranslateFactory {
 					new Object[] { cacheType.trim() });
 		}
 		return DialectFactory.getInstance()
-				.findByQuery(sqlToyContext, queryExecutor, sqlToyConfig,
+				.findByQuery(sqlToyContext, queryExecutor, sqlToyConfig, null,
 						StringUtil.isBlank(dataSourceName) ? sqlToyContext.getDefaultDataSource()
 								: sqlToyContext.getDataSource(dataSourceName))
 				.getRows();
@@ -310,11 +320,13 @@ public class TranslateFactory {
 		String jsonStr = HttpClientUtils.doPost(sqlToyContext, cacheModel.getUrl(), cacheModel.getUsername(),
 				cacheModel.getPassword(), "type", StringUtil.isBlank(cacheType) ? null : cacheType.trim());
 		if (jsonStr != null) {
-			if (cacheModel.getProperties() == null || cacheModel.getProperties().length == 0)
+			if (cacheModel.getProperties() == null || cacheModel.getProperties().length == 0) {
 				return JSON.parseArray(jsonStr, Object[].class);
+			}
 			JSONArray jsonSet = JSON.parseArray(jsonStr);
-			if (jsonSet.isEmpty())
+			if (jsonSet.isEmpty()) {
 				return null;
+			}
 			List<Object[]> result = new ArrayList<Object[]>();
 			int size = cacheModel.getProperties().length;
 			JSONObject jsonObj;

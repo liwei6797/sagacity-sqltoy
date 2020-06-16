@@ -16,7 +16,8 @@ import org.sagacity.sqltoy.translate.model.CheckerConfigModel;
 import org.sagacity.sqltoy.translate.model.DefaultConfig;
 import org.sagacity.sqltoy.translate.model.TimeSection;
 import org.sagacity.sqltoy.translate.model.TranslateConfigModel;
-import org.sagacity.sqltoy.utils.CommonUtils;
+import org.sagacity.sqltoy.utils.FileUtil;
+import org.sagacity.sqltoy.utils.NumberUtil;
 import org.sagacity.sqltoy.utils.SqlUtil;
 import org.sagacity.sqltoy.utils.StringUtil;
 import org.sagacity.sqltoy.utils.XMLUtil;
@@ -56,7 +57,7 @@ public class TranslateConfigParse {
 			final HashMap<String, TranslateConfigModel> translateMap, final List<CheckerConfigModel> checker,
 			String translateConfig, String charset) throws Exception {
 		// 判断缓存翻译的配置文件是否存在
-		if (CommonUtils.getFileInputStream(translateConfig) == null) {
+		if (FileUtil.getFileInputStream(translateConfig) == null) {
 			logger.warn("缓存翻译配置文件:{}无法加载,请检查配路径正确性,如不使用缓存翻译可忽略此提示!", translateConfig);
 			return null;
 		}
@@ -139,6 +140,7 @@ public class TranslateConfigParse {
 				}
 				String nodeType;
 				index = 1;
+				// 缓存更新检测
 				for (String translateType : TRANSLATE_CHECKER_TYPES) {
 					nodeType = translateType.concat(CHECKER_SUFFIX);
 					elts = node.getElementsByTagName(nodeType);
@@ -176,6 +178,13 @@ public class TranslateConfigParse {
 									sqlToyConfig.setShowSql(!isShowSql);
 									sqlToyConfig.setParamsName(
 											SqlConfigParseUtils.getSqlParamsName(sqlToyConfig.getSql(null), true));
+									// 增加条件参数检查,避免开发者手误然后找不到原因!有出现:lastUpdateTime 和 lastUpdateTimee 的找半天发现不了问题的!
+									if (sqlToyConfig.getParamsName() != null
+											&& sqlToyConfig.getParamsName().length > 1) {
+										throw new IllegalArgumentException(
+												"请检查缓存更新检测sql语句中的参数名称,所有参数名称要保持一致为lastUpdateTime!当前有:"
+														+ sqlToyConfig.getParamsName().length + " 个不同条件参数名!");
+									}
 									sqlToyContext.putSqlToyConfig(sqlToyConfig);
 									checherConfigModel.setSql(sqlId);
 									index++;
@@ -190,7 +199,7 @@ public class TranslateConfigParse {
 								frequency = StringUtil.toDBC(frequency).replaceAll("\\;", ",").trim();
 								// 0~24点 统一的检测频率
 								// 可以是单个频率值,表示0到24小时采用统一的频率
-								if (CommonUtils.isInteger(frequency)) {
+								if (NumberUtil.isInteger(frequency)) {
 									TimeSection section = new TimeSection();
 									section.setStart(0);
 									section.setEnd(2400);
@@ -231,7 +240,7 @@ public class TranslateConfigParse {
 	 */
 	private static int getHourMinute(String hourMinuteStr) {
 		// 320(3点20分)
-		if (CommonUtils.isInteger(hourMinuteStr) && hourMinuteStr.length() > 2) {
+		if (NumberUtil.isInteger(hourMinuteStr) && hourMinuteStr.length() > 2) {
 			return Integer.parseInt(hourMinuteStr);
 		}
 		String tmp = hourMinuteStr.replaceAll("\\.", ":");

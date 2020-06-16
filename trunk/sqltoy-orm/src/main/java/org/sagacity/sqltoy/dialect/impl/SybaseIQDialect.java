@@ -32,7 +32,8 @@ import org.sagacity.sqltoy.model.LockMode;
 import org.sagacity.sqltoy.model.QueryResult;
 import org.sagacity.sqltoy.model.StoreResult;
 import org.sagacity.sqltoy.utils.BeanUtil;
-import org.sagacity.sqltoy.utils.CommonUtils;
+import org.sagacity.sqltoy.utils.NumberUtil;
+import org.sagacity.sqltoy.utils.ReservedWordsUtil;
 import org.sagacity.sqltoy.utils.SqlUtil;
 import org.sagacity.sqltoy.utils.StringUtil;
 import org.slf4j.Logger;
@@ -148,9 +149,9 @@ public class SybaseIQDialect implements Dialect {
 				}
 			}
 			queryParam = DialectUtils.wrapPageSqlParams(sqlToyContext, sqlToyConfig, queryExecutor, sql.toString(),
-					CommonUtils.randomArray(totalCount.intValue(), randomCount.intValue()), null);
+					NumberUtil.randomArray(totalCount.intValue(), randomCount.intValue()), null);
 			queryResult = findBySql(sqlToyContext, sqlToyConfig, queryParam.getSql(), queryParam.getParamsValue(),
-					queryExecutor.getRowCallbackHandler(), conn, dbType, dialect, queryExecutor.getFetchSize(),
+					queryExecutor.getRowCallbackHandler(), conn, null, dbType, dialect, queryExecutor.getFetchSize(),
 					queryExecutor.getMaxRows());
 		} catch (Exception e) {
 			throw e;
@@ -195,7 +196,7 @@ public class SybaseIQDialect implements Dialect {
 		SqlToyResult queryParam = DialectUtils.wrapPageSqlParams(sqlToyContext, sqlToyConfig, queryExecutor,
 				sql.toString(), Long.valueOf(pageSize), (pageNo - 1) * pageSize);
 		return findBySql(sqlToyContext, sqlToyConfig, queryParam.getSql(), queryParam.getParamsValue(),
-				queryExecutor.getRowCallbackHandler(), conn, dbType, dialect, queryExecutor.getFetchSize(),
+				queryExecutor.getRowCallbackHandler(), conn, null, dbType, dialect, queryExecutor.getFetchSize(),
 				queryExecutor.getMaxRows());
 	}
 
@@ -237,7 +238,7 @@ public class SybaseIQDialect implements Dialect {
 		SqlToyResult queryParam = DialectUtils.wrapPageSqlParams(sqlToyContext, sqlToyConfig, queryExecutor,
 				sql.toString(), null, null);
 		return findBySql(sqlToyContext, sqlToyConfig, queryParam.getSql(), queryParam.getParamsValue(),
-				queryExecutor.getRowCallbackHandler(), conn, dbType, dialect, queryExecutor.getFetchSize(),
+				queryExecutor.getRowCallbackHandler(), conn, null, dbType, dialect, queryExecutor.getFetchSize(),
 				queryExecutor.getMaxRows());
 	}
 
@@ -251,7 +252,11 @@ public class SybaseIQDialect implements Dialect {
 	 */
 	public QueryResult findBySql(final SqlToyContext sqlToyContext, final SqlToyConfig sqlToyConfig, final String sql,
 			final Object[] paramsValue, final RowCallbackHandler rowCallbackHandler, final Connection conn,
-			final Integer dbType, final String dialect, final int fetchSize, final int maxRows) throws Exception {
+			final LockMode lockMode, final Integer dbType, final String dialect, final int fetchSize, final int maxRows)
+			throws Exception {
+		if (null != lockMode) {
+			throw new UnsupportedOperationException("sybase iq lock search," + SqlToyConstants.UN_SUPPORT_MESSAGE);
+		}
 		return DialectUtils.findBySql(sqlToyContext, sqlToyConfig, sql, paramsValue, rowCallbackHandler, conn, dbType,
 				0, fetchSize, maxRows);
 	}
@@ -371,8 +376,9 @@ public class SybaseIQDialect implements Dialect {
 		EntityMeta entityMeta = sqlToyContext.getEntityMeta(entity.getClass());
 		// 获取loadsql(loadsql 可以通过@loadSql进行改变，所以需要sqltoyContext重新获取)
 		SqlToyConfig sqlToyConfig = sqlToyContext.getSqlToyConfig(entityMeta.getLoadSql(tableName), SqlType.search);
-		return (Serializable) DialectUtils.load(sqlToyContext, sqlToyConfig, sqlToyConfig.getSql(dialect), entityMeta,
-				entity, cascadeTypes, conn, dbType);
+		String loadSql = ReservedWordsUtil.convertSql(sqlToyConfig.getSql(dialect), dbType);
+		return (Serializable) DialectUtils.load(sqlToyContext, sqlToyConfig, loadSql, entityMeta, entity, cascadeTypes,
+				conn, dbType);
 	}
 
 	/*
@@ -394,7 +400,7 @@ public class SybaseIQDialect implements Dialect {
 					entities.get(0).getClass().getName() + "Entity Object hasn't primary key,cann't use load method!");
 		}
 		StringBuilder loadSql = new StringBuilder();
-		loadSql.append("select ").append(entityMeta.getAllColumnNames());
+		loadSql.append("select ").append(ReservedWordsUtil.convertSimpleSql(entityMeta.getAllColumnNames(), dbType));
 		loadSql.append(" from ");
 		// sharding 分表情况下会传递表名
 		loadSql.append(entityMeta.getSchemaTable(tableName));
@@ -405,7 +411,7 @@ public class SybaseIQDialect implements Dialect {
 			if (i > 0) {
 				loadSql.append(" and ");
 			}
-			loadSql.append(entityMeta.getColumnName(field));
+			loadSql.append(ReservedWordsUtil.convertWord(entityMeta.getColumnName(field), dbType));
 			loadSql.append(" in (:").append(field).append(") ");
 		}
 		return DialectUtils.loadAll(sqlToyContext, loadSql.toString(), entities, cascadeTypes, conn, dbType);

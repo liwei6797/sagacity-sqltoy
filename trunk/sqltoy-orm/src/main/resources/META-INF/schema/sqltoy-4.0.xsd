@@ -331,18 +331,15 @@
 			<!-- 分页优化 -->
 			<xsd:element name="page-optimize" minOccurs="0"
 				maxOccurs="1" type="sqltoyPageOptimizeType" />
-			<xsd:element name="fields" type="xsd:string" />
 		</xsd:choice>
 		<xsd:attribute name="id" type="xsd:string"
 			use="required" />
 		<xsd:attribute name="blank-to-null" type="xsd:boolean" />
 		<xsd:attribute name="collection" type="xsd:string"
 			use="required" />
-		<xsd:attribute name="mongo-factory" type="xsd:string" />
-		<xsd:attribute name="is-aggregate" type="xsd:boolean"
+		<xsd:attribute name="aggregate" type="xsd:boolean"
 			default="false" />
 		<xsd:attribute name="fields" use="required" />
-
 	</xsd:complexType>
 	<xsd:complexType name="sqlToyEqlType" mixed="true">
 		<xsd:annotation>
@@ -365,8 +362,6 @@
 				type="sqltoyUnpivotType" />
 			<xsd:element name="summary" minOccurs="0" maxOccurs="1"
 				type="sqltoySummaryType" />
-			<xsd:element name="fields" minOccurs="0" maxOccurs="1"
-				type="xsd:string" />
 		</xsd:choice>
 		<xsd:attribute name="id" type="xsd:string"
 			use="required" />
@@ -376,6 +371,8 @@
 		<xsd:attribute name="value-root" type="xsd:string" />
 		<xsd:attribute name="index" />
 		<xsd:attribute name="type" />
+		<xsd:attribute name="aggregate" type="xsd:boolean"
+			default="false" />
 		<xsd:attribute name="fields" use="required" />
 		<!-- es语法模式 -->
 		<xsd:attribute name="mode">
@@ -696,6 +693,11 @@
 		<xsd:attribute name="cache-indexs" type="xsd:string" />
 		<xsd:attribute name="uncached-template"
 			type="xsd:string" />
+		<xsd:attribute name="original-columns" type="xsd:string">
+			<xsd:annotation>
+				<xsd:documentation><![CDATA[服务于elastic、mongo在不使用sql模式,无法select staff_id as staffName,这里alias-name 对应staff_id]]></xsd:documentation>
+			</xsd:annotation>
+		</xsd:attribute>
 	</xsd:complexType>
 
 	<xsd:complexType name="sqltoySecureMaskType">

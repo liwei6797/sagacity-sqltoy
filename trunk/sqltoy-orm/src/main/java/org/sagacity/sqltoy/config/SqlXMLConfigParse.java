@@ -41,6 +41,7 @@ import org.sagacity.sqltoy.dialect.utils.PageOptimizeUtils;
 import org.sagacity.sqltoy.plugins.function.FunctionUtils;
 import org.sagacity.sqltoy.utils.BeanUtil;
 import org.sagacity.sqltoy.utils.DataSourceUtils;
+import org.sagacity.sqltoy.utils.ReservedWordsUtil;
 import org.sagacity.sqltoy.utils.SqlUtil;
 import org.sagacity.sqltoy.utils.StringUtil;
 import org.sagacity.sqltoy.utils.XMLUtil;
@@ -75,11 +76,21 @@ public class SqlXMLConfigParse {
 	private final static Pattern ES_AGGS_PATTERN = Pattern
 			.compile("(?i)\\W(\"|\')(aggregations|aggs)(\"|\')\\s*\\:\\s*\\{");
 
-	private final static Pattern MONGO_AGGS_PATTERN = Pattern.compile("(?i)\\\\$group\\\\s*\\\\:");
+	private final static Pattern MONGO_AGGS_PATTERN = Pattern.compile("(?i)\\$group\\s*\\:");
 
 	private final static Pattern GROUP_BY_PATTERN = Pattern.compile("(?i)\\Wgroup\\s+by\\W");
 
 	private static DocumentBuilderFactory domFactory = DocumentBuilderFactory.newInstance();
+
+	public static HashMap<String, String> filters = new HashMap<String, String>() {
+		/**
+		 * 
+		 */
+		private static final long serialVersionUID = 1636155921862321269L;
+		{
+			put("[", "]");
+		}
+	};
 
 	/**
 	 * @todo 判断文件 是否被修改，修改了则重新解析文件重置缓存
@@ -279,6 +290,7 @@ public class SqlXMLConfigParse {
 			// 清理sql中的一些注释、以及特殊的符号
 			countSql = StringUtil.clearMistyChars(SqlUtil.clearMark(countSql), " ").concat(" ");
 			countSql = FunctionUtils.getDialectSql(countSql, dialect);
+			countSql = ReservedWordsUtil.convertSql(countSql, DataSourceUtils.getDBType(dialect));
 			sqlToyConfig.setCountSql(countSql);
 		}
 		/**
@@ -351,9 +363,7 @@ public class SqlXMLConfigParse {
 		if (sqlElt.hasAttribute("collection")) {
 			noSqlConfig.setCollection(sqlElt.getAttribute("collection"));
 		}
-		if (sqlElt.hasAttribute("mongo-factory")) {
-			noSqlConfig.setMongoFactory(sqlElt.getAttribute("mongo-factory"));
-		}
+
 		// url应该是一个变量如:${es_url}
 		if (sqlElt.hasAttribute("url")) {
 			noSqlConfig.setEndpoint(SqlToyConstants.replaceParams(sqlElt.getAttribute("url")));
@@ -391,12 +401,12 @@ public class SqlXMLConfigParse {
 		// fields
 		if (sqlElt.hasAttribute("fields")) {
 			if (StringUtil.isNotBlank(sqlElt.getAttribute("fields"))) {
-				noSqlConfig.setFields(trimParams(sqlElt.getAttribute("fields").split("\\,")));
+				noSqlConfig.setFields(splitFields(sqlElt.getAttribute("fields")));
 			}
 		} else {
 			nodeList = sqlElt.getElementsByTagName("fields");
 			if (nodeList.getLength() > 0) {
-				noSqlConfig.setFields(trimParams(nodeList.item(0).getTextContent().split("\\,")));
+				noSqlConfig.setFields(splitFields(nodeList.item(0).getTextContent()));
 			}
 		}
 
@@ -410,6 +420,8 @@ public class SqlXMLConfigParse {
 		if (sqlElt.getNodeName().equalsIgnoreCase("eql")) {
 			if (sqlElt.hasAttribute("aggregate")) {
 				noSqlConfig.setHasAggs(Boolean.parseBoolean(sqlElt.getAttribute("aggregate")));
+			} else if (sqlElt.hasAttribute("is-aggregate")) {
+				noSqlConfig.setHasAggs(Boolean.parseBoolean(sqlElt.getAttribute("is-aggregate")));
 			} else {
 				noSqlConfig.setHasAggs(StringUtil.matches(sqlToyConfig.getSql(null), ES_AGGS_PATTERN));
 			}
@@ -425,6 +437,8 @@ public class SqlXMLConfigParse {
 		} else if (sqlElt.getNodeName().equalsIgnoreCase("mql")) {
 			if (sqlElt.hasAttribute("aggregate")) {
 				noSqlConfig.setHasAggs(Boolean.parseBoolean(sqlElt.getAttribute("aggregate")));
+			} else if (sqlElt.hasAttribute("is-aggregate")) {
+				noSqlConfig.setHasAggs(Boolean.parseBoolean(sqlElt.getAttribute("is-aggregate")));
 			} else {
 				noSqlConfig.setHasAggs(StringUtil.matches(sqlToyConfig.getSql(null), MONGO_AGGS_PATTERN));
 			}
@@ -890,7 +904,10 @@ public class SqlXMLConfigParse {
 			// 使用alias时只能针对单列处理
 			if (translate.hasAttribute("alias-name")) {
 				aliasNames = trimParams(translate.getAttribute("alias-name").toLowerCase().split("\\,"));
+			} else if (translate.hasAttribute("original-columns")) {
+				aliasNames = trimParams(translate.getAttribute("original-columns").toLowerCase().split("\\,"));
 			}
+
 			// 翻译key对应value的在缓存数组中对应的列
 			cacheIndexs = null;
 			if (translate.hasAttribute("cache-indexs")) {
@@ -1207,4 +1224,44 @@ public class SqlXMLConfigParse {
 		}
 		return realParamNames;
 	}
+
+	/**
+	 * @TODO 切割nosql 定义的fields,让其符合预期格式,格式为id[col1,col2:aliasName],col3,col4 将其按逗号分隔成
+	 * id.col1,id.cols2:aliasName,col3,col4
+	 * @param fields
+	 * @return
+	 */
+	private static String[] splitFields(String fields) {
+		if (StringUtil.isBlank(fields))
+			return null;
+		List<String> fieldSet = new ArrayList<String>();
+		String[] strs = StringUtil.splitExcludeSymMark(fields, ",", filters);
+		String pre;
+		String[] params;
+		for (String str : strs) {
+			if (str.contains("[") && str.contains("]")) {
+				pre = str.substring(0, str.indexOf("[")).trim();
+				params = str.substring(str.indexOf("[") + 1, str.indexOf("]")).split(",");
+				for (String param : params) {
+					fieldSet.add(pre.concat(".").concat(param.trim()));
+				}
+			} else {
+				fieldSet.add(str.trim());
+			}
+		}
+		String[] result = new String[fieldSet.size()];
+		fieldSet.toArray(result);
+		return result;
+	}
+
+//	public static void main(String[] args) {
+//		String fields;
+//		fields = "id[code,sexType:sexTypeName],name";
+//		fields = "id[code,sexType],name";
+//		fields = "id.code,sexType,name";
+//		String[] result = splitFields(fields);
+//		for (String str : result) {
+//			System.err.println("[" + str + "]");
+//		}
+//	}
 }

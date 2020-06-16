@@ -31,6 +31,7 @@ import org.sagacity.sqltoy.config.model.ShardingConfig;
 import org.sagacity.sqltoy.config.model.ShardingStrategyConfig;
 import org.sagacity.sqltoy.plugins.id.IdGenerator;
 import org.sagacity.sqltoy.plugins.id.impl.RedisIdGenerator;
+import org.sagacity.sqltoy.utils.ReservedWordsUtil;
 import org.sagacity.sqltoy.utils.StringUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -103,7 +104,33 @@ public class EntityManager {
 	/**
 	 * 存放每个对象跟数据库表的关系信息
 	 */
-	private ConcurrentHashMap<Class, EntityMeta> entitysMetaMap = new ConcurrentHashMap<Class, EntityMeta>();
+	private ConcurrentHashMap<String, EntityMeta> entitysMetaMap = new ConcurrentHashMap<String, EntityMeta>();
+
+	/**
+	 * 非sqltoy entity类,一般指仅用于查询作为返回结果的VO
+	 */
+	private ConcurrentHashMap<String, String> unEntityMap = new ConcurrentHashMap<String, String>();
+
+	/**
+	 * @TODO 判断是否是实体对象
+	 * @param sqlToyContext
+	 * @param entityClass
+	 * @return
+	 */
+	public boolean isEntity(SqlToyContext sqlToyContext, Class entityClass) {
+		String className = entityClass.getName();
+		if (unEntityMap.contains(className))
+			return false;
+		if (entitysMetaMap.contains(className)) {
+			return true;
+		}
+
+		EntityMeta entityMeta = parseEntityMeta(sqlToyContext, entityClass);
+		if (entityMeta != null)
+			return true;
+		unEntityMap.put(className, "1");
+		return false;
+	}
 
 	/**
 	 * @todo <b>获取Entity类的对应数据库表信息，如：查询、修改、插入sql、对象属性跟表字段之间的关系等信息</b>
@@ -114,13 +141,14 @@ public class EntityManager {
 	public EntityMeta getEntityMeta(SqlToyContext sqlToyContext, Class entityClass) {
 		if (entityClass == null)
 			return null;
-		EntityMeta entityMeta = entitysMetaMap.get(entityClass);
+		String className = entityClass.getName();
+		EntityMeta entityMeta = entitysMetaMap.get(className);
 		// update 2017-11-27
 		// 增加在使用对象时动态解析的功能,让sqltoy可以不用配置packagesToScan和annotatedClasses
 		if (entityMeta == null) {
 			entityMeta = parseEntityMeta(sqlToyContext, entityClass);
 			if (entityMeta == null) {
-				throw new IllegalArgumentException("您传入的对象:[".concat(entityClass.getName())
+				throw new IllegalArgumentException("您传入的对象:[".concat(className)
 						.concat(" ]不是一个@SqlToyEntity实体POJO对象,sqltoy实体对象必须使用 @SqlToyEntity/@Entity/@Id 等注解来标识!"));
 			}
 		}
@@ -169,9 +197,11 @@ public class EntityManager {
 	public synchronized EntityMeta parseEntityMeta(SqlToyContext sqlToyContext, Class entityClass) {
 		if (entityClass == null)
 			return null;
+		String className = entityClass.getName();
 		// 避免重复解析
-		if (entitysMetaMap.containsKey(entityClass))
-			return entitysMetaMap.get(entityClass);
+		if (entitysMetaMap.containsKey(className)) {
+			return entitysMetaMap.get(className);
+		}
 		EntityMeta entityMeta = null;
 		try {
 			Class realEntityClass = entityClass;
@@ -196,8 +226,8 @@ public class EntityManager {
 				// 表名
 				entityMeta.setTableName(entity.tableName());
 
-				// 解析自定义注解sql
-				parseAnnotationSql(entityMeta, entityClass);
+				// 解析自定义注解
+				parseCustomAnnotation(entityMeta, entityClass);
 				// 解析sharding策略
 				parseSharding(entityMeta, entityClass);
 
@@ -238,7 +268,7 @@ public class EntityManager {
 					if (i > 0) {
 						allColNames.append(",");
 					}
-					allColNames.append(allColumnNames.get(i));
+					allColNames.append(ReservedWordsUtil.convertWord(allColumnNames.get(i), null));
 				}
 				entityMeta.setAllColumnNames(allColNames.toString());
 				// 表全量查询语句 update 2019-12-9 将原先select * 改成 select 具体字段
@@ -282,23 +312,23 @@ public class EntityManager {
 				parseFieldTypeAndDefault(entityMeta);
 			}
 		} catch (Exception e) {
-			logger.error("Sqltoy 解析Entity对象:[{}]发生错误,请检查对象注解是否正确!", entityClass.getName());
+			logger.error("Sqltoy 解析Entity对象:[{}]发生错误,请检查对象注解是否正确!", className);
 			e.printStackTrace();
 		}
 		if (entityMeta != null) {
-			entitysMetaMap.put(entityClass, entityMeta);
+			entitysMetaMap.put(className, entityMeta);
 		} else {
-			logger.error("SqlToy Entity:{}没有使用@Entity注解表明是一个实体类,请检查!", entityClass.getName());
+			logger.warn("SqlToy Entity:{}没有使用@Entity注解表明是一个实体类,请检查!", className);
 		}
 		return entityMeta;
 	}
 
 	/**
-	 * @todo 解析注解sql语句
+	 * @todo 解析自定义注解
 	 * @param entityMeta
 	 * @param entityClass
 	 */
-	private void parseAnnotationSql(EntityMeta entityMeta, Class entityClass) {
+	private void parseCustomAnnotation(EntityMeta entityMeta, Class entityClass) {
 		// 单记录查询的自定义语句
 		if (entityClass.isAnnotationPresent(LoadSql.class)) {
 			LoadSql loadSql = (LoadSql) entityClass.getAnnotation(LoadSql.class);
@@ -458,6 +488,7 @@ public class EntityManager {
 		entityMeta.addFieldMeta(fieldMeta);
 		// 判断字段是否为主键
 		Id id = field.getAnnotation(Id.class);
+		String idColName;
 		if (id != null) {
 			fieldMeta.setPK(true);
 			// 主键生成策略
@@ -475,8 +506,9 @@ public class EntityManager {
 				loadNamedWhereSql.append(" where ");
 				loadArgWhereSql.append(" where ");
 			}
-			loadNamedWhereSql.append(column.name()).append("=:").append(field.getName());
-			loadArgWhereSql.append(column.name()).append("=?");
+			idColName = ReservedWordsUtil.convertWord(column.name(), null);
+			loadNamedWhereSql.append(idColName).append("=:").append(field.getName());
+			loadArgWhereSql.append(idColName).append("=?");
 		} else {
 			rejectIdFieldList.add(field.getName());
 		}
@@ -530,7 +562,7 @@ public class EntityManager {
 				// redis 情况特殊,依赖redisTemplate,小心修改
 				if (generator.endsWith("RedisIdGenerator")) {
 					RedisIdGenerator redis = (RedisIdGenerator) RedisIdGenerator.getInstance(sqlToyContext);
-					if (redis == null || redis.getRedisTemplate() == null) {
+					if (redis == null || !redis.hasRedisTemplate()) {
 						logger.error("POJO Class={} 的redisIdGenerator 未能被正确实例化,可能的原因是未定义RedisTemplate!",
 								entityMeta.getEntityClass().getName());
 					}
@@ -602,7 +634,8 @@ public class EntityManager {
 			if (i > 0) {
 				subWhereSql = subWhereSql.concat(" and ");
 			}
-			subWhereSql = subWhereSql.concat(mappedColumns[i]).concat("=:").concat(mappedFields[i]);
+			subWhereSql = subWhereSql.concat(ReservedWordsUtil.convertWord(mappedColumns[i], null)).concat("=:")
+					.concat(mappedFields[i]);
 		}
 		boolean matchedWhere = false;
 		// 默认load为true，由程序员通过程序指定哪些子表是否需要加载
@@ -640,7 +673,7 @@ public class EntityManager {
 			if (i > 0) {
 				subDeleteSql = subDeleteSql.concat(" and ");
 			}
-			subDeleteSql = subDeleteSql.concat(mappedColumns[i]).concat("=?");
+			subDeleteSql = subDeleteSql.concat(ReservedWordsUtil.convertWord(mappedColumns[i], null)).concat("=?");
 		}
 		oneToManyModel.setDeleteSubTableSql(subDeleteSql);
 

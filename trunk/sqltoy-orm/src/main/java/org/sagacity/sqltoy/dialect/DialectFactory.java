@@ -30,13 +30,17 @@ import org.sagacity.sqltoy.config.model.SqlToyResult;
 import org.sagacity.sqltoy.config.model.SqlWithAnalysis;
 import org.sagacity.sqltoy.dialect.impl.ClickHouseDialect;
 import org.sagacity.sqltoy.dialect.impl.DB2Dialect;
+import org.sagacity.sqltoy.dialect.impl.DMDialect;
+import org.sagacity.sqltoy.dialect.impl.GuassDBDialect;
 import org.sagacity.sqltoy.dialect.impl.MySqlDialect;
+import org.sagacity.sqltoy.dialect.impl.OceanBaseDialect;
 import org.sagacity.sqltoy.dialect.impl.Oracle11gDialect;
 import org.sagacity.sqltoy.dialect.impl.OracleDialect;
 import org.sagacity.sqltoy.dialect.impl.PostgreSqlDialect;
 import org.sagacity.sqltoy.dialect.impl.SqlServerDialect;
 import org.sagacity.sqltoy.dialect.impl.SqliteDialect;
 import org.sagacity.sqltoy.dialect.impl.SybaseIQDialect;
+import org.sagacity.sqltoy.dialect.impl.TidbDialect;
 import org.sagacity.sqltoy.dialect.utils.DialectUtils;
 import org.sagacity.sqltoy.dialect.utils.PageOptimizeUtils;
 import org.sagacity.sqltoy.exception.DataAccessException;
@@ -62,10 +66,12 @@ import org.slf4j.LoggerFactory;
 
 /**
  * @project sqltoy-orm
- * @description 根据不同数据库类型提取不同数据库的处理handler,避免2.0之前版本:一个功能不同数据库写在一个方法中的弊端,
- *              每次修改容易产生连锁反应,分不同数据库方言虽然代码量多了一些，但可读性和可维护性变得更强
+ * @description 为不同类型数据库提供不同方言实现类的factory,避免各个数据库发展变更形成相互影响
  * @author chenrenfei <a href="mailto:zhongxuchen@gmail.com">联系作者</a>
  * @version id:DialectFactory.java,Revision:v1.0,Date:2014年12月11日
+ * @modify data:2020-06-05 增加dm(达梦)数据库支持
+ * @modify data:2020-06-10
+ *         增加tidb、guassdb、oceanbase支持,规整sqlserver提出2012版本(默认仅支持2012+)
  */
 @SuppressWarnings({ "rawtypes", "unchecked" })
 public class DialectFactory {
@@ -75,7 +81,7 @@ public class DialectFactory {
 	protected final Logger logger = LoggerFactory.getLogger(DialectFactory.class);
 
 	/**
-	 * 不同数据库方言的处理器实例
+	 * 不同数据库方言的处理器实例(为什么不采用并发map?因为这里只有取,几乎不存在放入)
 	 */
 	private static HashMap<Integer, Dialect> dialects = new HashMap<Integer, Dialect>();
 
@@ -116,68 +122,86 @@ public class DialectFactory {
 		// 从map中直接获取实例，避免重复创建和判断
 		if (dialects.containsKey(dbType)) {
 			return dialects.get(dbType);
-		} else {
-			// 按照市场排名作为优先顺序
-			Dialect dialectSqlWrapper = null;
-			switch (dbType) {
-			// oracle12c(分页方式有了改变,支持identity主键策略(内部其实还是sequence模式))
-			case DBType.ORACLE: {
-				dialectSqlWrapper = new OracleDialect();
-				break;
-			}
-			// 5.6+(mysql 的缺陷主要集中在不支持with as以及临时表不同在一个查询中多次引用)
-			// 8.x+(支持with as语法)
-			// MariaDB 在检测的时候归并到mysql,采用跟mysql一样的语法
-			case DBType.MYSQL:
-			case DBType.MYSQL57: {
-				dialectSqlWrapper = new MySqlDialect();
-				break;
-			}
-			// sqlserver2012 以后分页方式更简单
-			case DBType.SQLSERVER:
-			case DBType.SQLSERVER2012: {
-				dialectSqlWrapper = new SqlServerDialect();
-				break;
-			}
-			// 9.5+(9.5开始支持类似merge into形式的语法,参见具体实现)
-			case DBType.POSTGRESQL:
-			case DBType.GAUSSDB: {
-				dialectSqlWrapper = new PostgreSqlDialect();
-				break;
-			}
-			// db2 10.x版本分页支持offset模式
-			case DBType.DB2: {
-				dialectSqlWrapper = new DB2Dialect();
-				break;
-			}
-			// clickhouse 19.x 版本开始支持
-			case DBType.CLICKHOUSE: {
-				dialectSqlWrapper = new ClickHouseDialect();
-				break;
-			}
-			// 基本支持(sqlite 本身功能就相对简单)
-			case DBType.SQLITE: {
-				dialectSqlWrapper = new SqliteDialect();
-				break;
-			}
-			// 10g,11g
-			case DBType.ORACLE11: {
-				dialectSqlWrapper = new Oracle11gDialect();
-				break;
-			}
-			// 15.4+(必须采用15.4,最好采用16.0 并打上最新的补丁),15.4 之后的分页支持limit模式
-			case DBType.SYBASE_IQ: {
-				dialectSqlWrapper = new SybaseIQDialect();
-				break;
-			}
-			// 如果匹配不上抛出异常
-			default:
-				// 不支持
-				throw new UnsupportedOperationException(SqlToyConstants.UN_MATCH_DIALECT_MESSAGE);
-			}
-			dialects.put(dbType, dialectSqlWrapper);
-			return dialectSqlWrapper;
 		}
+		// 按照市场排名作为优先顺序
+		Dialect dialectSqlWrapper = null;
+		switch (dbType) {
+		// oracle12c(分页方式有了改变,支持identity主键策略(内部其实还是sequence模式))
+		case DBType.ORACLE: {
+			dialectSqlWrapper = new OracleDialect();
+			break;
+		}
+		// 5.6+(mysql 的缺陷主要集中在不支持with as以及临时表不同在一个查询中多次引用)
+		// 8.x+(支持with as语法)
+		// MariaDB 在检测的时候归并到mysql,采用跟mysql一样的语法
+		case DBType.MYSQL:
+		case DBType.MYSQL57: {
+			dialectSqlWrapper = new MySqlDialect();
+			break;
+		}
+		// sqlserver2012 以后分页方式更简单
+		case DBType.SQLSERVER: {
+			dialectSqlWrapper = new SqlServerDialect();
+			break;
+		}
+		// 9.5+(9.5开始支持类似merge into形式的语法,参见具体实现)
+		case DBType.POSTGRESQL: {
+			dialectSqlWrapper = new PostgreSqlDialect();
+			break;
+		}
+		// oceanbase 数据库支持
+		case DBType.OCEANBASE: {
+			dialectSqlWrapper = new OceanBaseDialect();
+			break;
+		}
+		// db2 10.x版本分页支持offset模式
+		case DBType.DB2: {
+			dialectSqlWrapper = new DB2Dialect();
+			break;
+		}
+		// clickhouse 19.x 版本开始支持
+		case DBType.CLICKHOUSE: {
+			dialectSqlWrapper = new ClickHouseDialect();
+			break;
+		}
+		// Tidb方言支持
+		case DBType.TIDB: {
+			dialectSqlWrapper = new TidbDialect();
+			break;
+		}
+		// 华为guassdb(postgresql 为蓝本的)
+		case DBType.GAUSSDB: {
+			dialectSqlWrapper = new GuassDBDialect();
+			break;
+		}
+		// dm数据库支持(以oracle为蓝本)
+		case DBType.DM: {
+			dialectSqlWrapper = new DMDialect();
+			break;
+		}
+		// 基本支持(sqlite 本身功能就相对简单)
+		case DBType.SQLITE: {
+			dialectSqlWrapper = new SqliteDialect();
+			break;
+		}
+		// 10g,11g
+		case DBType.ORACLE11: {
+			dialectSqlWrapper = new Oracle11gDialect();
+			break;
+		}
+		// sybase iq基本淘汰
+		// 15.4+(必须采用15.4,最好采用16.0 并打上最新的补丁),15.4 之后的分页支持limit模式
+		case DBType.SYBASE_IQ: {
+			dialectSqlWrapper = new SybaseIQDialect();
+			break;
+		}
+		// 如果匹配不上抛出异常
+		default:
+			// 不支持
+			throw new UnsupportedOperationException(SqlToyConstants.UN_MATCH_DIALECT_MESSAGE);
+		}
+		dialects.put(dbType, dialectSqlWrapper);
+		return dialectSqlWrapper;
 	}
 
 	/**
@@ -218,7 +242,7 @@ public class DialectFactory {
 					}
 					SqlExecuteStat.showSql(realSql, null);
 					this.setResult(SqlUtil.batchUpdateByJdbc(realSql, values, batchSize, insertCallhandler, fieldTypes,
-							(autoCommit == null) ? false : autoCommit, conn, dbType));
+							autoCommit, conn, dbType));
 				}
 			});
 		} catch (Exception e) {
@@ -362,8 +386,7 @@ public class DialectFactory {
 							// 存在计算和旋转的数据不能映射到对象(数据类型不一致，如汇总平均以及数据旋转)
 							List pivotCategorySet = ResultUtils.getPivotCategory(sqlToyContext, realSqlToyConfig,
 									queryExecutor, conn, dbType, dialect);
-							ResultUtils.calculate(realSqlToyConfig, queryResult, pivotCategorySet,
-									sqlToyContext.isDebug());
+							ResultUtils.calculate(realSqlToyConfig, queryResult, pivotCategorySet);
 							if (queryExecutor.getResultType() != null) {
 								queryResult.setRows(ResultUtils.wrapQueryResult(queryResult.getRows(),
 										ResultUtils.humpFieldNames(queryExecutor, queryResult.getLabelNames()),
@@ -512,8 +535,7 @@ public class DialectFactory {
 							// 存在计算和旋转的数据不能映射到对象(数据类型不一致，如汇总平均以及数据旋转)
 							List pivotCategorySet = ResultUtils.getPivotCategory(sqlToyContext, realSqlToyConfig,
 									queryExecutor, conn, dbType, dialect);
-							ResultUtils.calculate(realSqlToyConfig, queryResult, pivotCategorySet,
-									sqlToyContext.isDebug());
+							ResultUtils.calculate(realSqlToyConfig, queryResult, pivotCategorySet);
 							// 结果映射成对象
 							if (queryExecutor.getResultType() != null) {
 								queryResult.setRows(ResultUtils.wrapQueryResult(queryResult.getRows(),
@@ -601,7 +623,7 @@ public class DialectFactory {
 											queryExecutor.getParamsValue(sqlToyContext, realSqlToyConfig));
 									queryResult = getDialectSqlWrapper(dbType).findBySql(sqlToyContext,
 											realSqlToyConfig, queryParam.getSql(), queryParam.getParamsValue(),
-											queryExecutor.getRowCallbackHandler(), conn, dbType, dialect,
+											queryExecutor.getRowCallbackHandler(), conn, null, dbType, dialect,
 											queryExecutor.getFetchSize(), queryExecutor.getMaxRows());
 									long totalRecord = (queryResult.getRows() == null) ? 0
 											: queryResult.getRows().size();
@@ -621,8 +643,7 @@ public class DialectFactory {
 								// 存在计算和旋转的数据不能映射到对象(数据类型不一致，如汇总平均以及数据旋转)
 								List pivotCategorySet = ResultUtils.getPivotCategory(sqlToyContext, realSqlToyConfig,
 										queryExecutor, conn, dbType, dialect);
-								ResultUtils.calculate(realSqlToyConfig, queryResult, pivotCategorySet,
-										sqlToyContext.isDebug());
+								ResultUtils.calculate(realSqlToyConfig, queryResult, pivotCategorySet);
 								// 结果映射成对象
 								if (queryExecutor.getResultType() != null) {
 									queryResult.setRows(ResultUtils.wrapQueryResult(queryResult.getRows(),
@@ -686,8 +707,7 @@ public class DialectFactory {
 							// 存在计算和旋转的数据不能映射到对象(数据类型不一致，如汇总平均以及数据旋转)
 							List pivotCategorySet = ResultUtils.getPivotCategory(sqlToyContext, realSqlToyConfig,
 									queryExecutor, conn, dbType, dialect);
-							ResultUtils.calculate(realSqlToyConfig, queryResult, pivotCategorySet,
-									sqlToyContext.isDebug());
+							ResultUtils.calculate(realSqlToyConfig, queryResult, pivotCategorySet);
 							// 结果映射成对象
 							if (queryExecutor.getResultType() != null) {
 								queryResult.setRows(ResultUtils.wrapQueryResult(queryResult.getRows(),
@@ -710,11 +730,12 @@ public class DialectFactory {
 	 * @param sqlToyContext
 	 * @param queryExecutor
 	 * @param sqlToyConfig
+	 * @param lockMode
 	 * @param dataSource
 	 * @return
 	 */
 	public QueryResult findByQuery(final SqlToyContext sqlToyContext, final QueryExecutor queryExecutor,
-			final SqlToyConfig sqlToyConfig, final DataSource dataSource) {
+			final SqlToyConfig sqlToyConfig, final LockMode lockMode, final DataSource dataSource) {
 		if (queryExecutor.getSql() == null) {
 			throw new IllegalArgumentException("findByQuery operate sql is null!");
 		}
@@ -734,13 +755,12 @@ public class DialectFactory {
 									queryExecutor.getParamsValue(sqlToyContext, realSqlToyConfig));
 							QueryResult queryResult = getDialectSqlWrapper(dbType).findBySql(sqlToyContext,
 									realSqlToyConfig, queryParam.getSql(), queryParam.getParamsValue(),
-									queryExecutor.getRowCallbackHandler(), conn, dbType, dialect,
+									queryExecutor.getRowCallbackHandler(), conn, lockMode, dbType, dialect,
 									queryExecutor.getFetchSize(), queryExecutor.getMaxRows());
 							// 存在计算和旋转的数据不能映射到对象(数据类型不一致，如汇总平均以及数据旋转)
 							List pivotCategorySet = ResultUtils.getPivotCategory(sqlToyContext, realSqlToyConfig,
 									queryExecutor, conn, dbType, dialect);
-							ResultUtils.calculate(realSqlToyConfig, queryResult, pivotCategorySet,
-									sqlToyContext.isDebug());
+							ResultUtils.calculate(realSqlToyConfig, queryResult, pivotCategorySet);
 							// 结果映射成对象
 							if (queryExecutor.getResultType() != null) {
 								queryResult.setRows(ResultUtils.wrapQueryResult(queryResult.getRows(),
@@ -923,8 +943,7 @@ public class DialectFactory {
 												throws Exception {
 											this.setResult(getDialectSqlWrapper(dbType).saveOrUpdateAll(sqlToyContext,
 													batchModel.getEntities(), batchSize, reflectPropertyHandler,
-													forceUpdateProps, conn, dbType, dialect,
-													(autoCommit == null) ? false : autoCommit,
+													forceUpdateProps, conn, dbType, dialect, autoCommit,
 													shardingModel.getTableName()));
 										}
 									});
@@ -977,8 +996,7 @@ public class DialectFactory {
 												throws Exception {
 											this.setResult(getDialectSqlWrapper(dbType).saveAllIgnoreExist(
 													sqlToyContext, batchModel.getEntities(), batchSize,
-													reflectPropertyHandler, conn, dbType, dialect,
-													(autoCommit == null) ? false : autoCommit,
+													reflectPropertyHandler, conn, dbType, dialect, autoCommit,
 													shardingModel.getTableName()));
 										}
 									});
@@ -1137,8 +1155,7 @@ public class DialectFactory {
 												throws Exception {
 											this.setResult(getDialectSqlWrapper(dbType).saveAll(sqlToyContext,
 													batchModel.getEntities(), batchSize, reflectPropertyHandler, conn,
-													dbType, dialect, (autoCommit == null) ? false : autoCommit,
-													shardingModel.getTableName()));
+													dbType, dialect, autoCommit, shardingModel.getTableName()));
 										}
 									});
 							List<Long> tmp = new ArrayList();
@@ -1226,8 +1243,7 @@ public class DialectFactory {
 												throws Exception {
 											this.setResult(getDialectSqlWrapper(dbType).updateAll(sqlToyContext,
 													batchModel.getEntities(), batchSize, forceUpdateFields,
-													reflectPropertyHandler, conn, dbType, dialect,
-													(autoCommit == null) ? false : autoCommit,
+													reflectPropertyHandler, conn, dbType, dialect, autoCommit,
 													shardingModel.getTableName()));
 										}
 									});
@@ -1307,8 +1323,7 @@ public class DialectFactory {
 												throws Exception {
 											this.setResult(getDialectSqlWrapper(dbType).deleteAll(sqlToyContext,
 													batchModel.getEntities(), batchSize, conn, dbType, dialect,
-													(autoCommit == null) ? false : autoCommit,
-													shardingModel.getTableName()));
+													autoCommit, shardingModel.getTableName()));
 										}
 									});
 							List<Long> tmp = new ArrayList();
@@ -1496,7 +1511,7 @@ public class DialectFactory {
 									inParamsValue);
 							List pivotCategorySet = ResultUtils.getPivotCategory(sqlToyContext, sqlToyConfig,
 									queryExecutor, conn, dbType, dialect);
-							ResultUtils.calculate(sqlToyConfig, queryResult, pivotCategorySet, sqlToyContext.isDebug());
+							ResultUtils.calculate(sqlToyConfig, queryResult, pivotCategorySet);
 							// }
 							// 映射成对象
 							if (resultType != null) {

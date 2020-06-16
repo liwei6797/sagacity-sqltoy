@@ -15,7 +15,6 @@ import org.sagacity.sqltoy.service.SqlToyCRUDService;
 import org.sagacity.sqltoy.service.impl.SqlToyCRUDServiceImpl;
 import org.sagacity.sqltoy.utils.StringUtil;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationContext;
@@ -29,7 +28,6 @@ import org.springframework.context.annotation.Configuration;
  * @modify {Date:2020-2-20,完善配置支持es等,实现完整功能}
  */
 @Configuration
-@ConditionalOnClass(SqlToyLazyDaoImpl.class)
 @EnableConfigurationProperties(SqlToyContextProperties.class)
 public class SqltoyAutoConfiguration {
 	@Resource
@@ -46,8 +44,8 @@ public class SqltoyAutoConfiguration {
 		sqlToyContext.setSqlResourcesDir(properties.getSqlResourcesDir());
 		if (properties.getSqlResources() != null && properties.getSqlResources().length > 0) {
 			List<String> resList = new ArrayList<String>();
-			for (String s : properties.getSqlResources()) {
-				resList.add(s);
+			for (String prop : properties.getSqlResources()) {
+				resList.add(prop);
 			}
 			sqlToyContext.setSqlResources(resList);
 		}
@@ -104,8 +102,14 @@ public class SqltoyAutoConfiguration {
 			sqlToyContext.setFunctionConverts(properties.getFunctionConverts());
 		}
 
+		// 缓存翻译配置
 		if (properties.getTranslateConfig() != null) {
 			sqlToyContext.setTranslateConfig(properties.getTranslateConfig());
+		}
+
+		// 数据库保留字
+		if (properties.getReservedWords() != null) {
+			sqlToyContext.setReservedWords(properties.getReservedWords());
 		}
 		// 数据库方言
 		sqlToyContext.setDialect(properties.getDialect());
@@ -145,11 +149,8 @@ public class SqltoyAutoConfiguration {
 				ep.setKeyStore(esconfig.getKeyStore());
 				endpoints.add(ep);
 			}
+			// 这里已经完成了当没有设置默认节点时将第一个节点作为默认节点
 			sqlToyContext.setElasticEndpoints(endpoints);
-		}
-		// mongodb
-		if (properties.getMongoFactoryName() != null) {
-			sqlToyContext.setMongoFactoryName(properties.getMongoFactoryName());
 		}
 		// 设置默认数据库
 		if (properties.getDefaultDataSource() != null) {

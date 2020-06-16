@@ -60,8 +60,6 @@ public class HttpClientUtils {
 
 	private final static String CONTENT_TYPE = "application/json";
 
-	// private final static String GET = "GET";
-
 	private final static String POST = "POST";
 
 	public static String doPost(SqlToyContext sqltoyContext, final String url, String username, String password,
@@ -135,6 +133,7 @@ public class HttpClientUtils {
 		String realUrl;
 		// 返回结果
 		HttpEntity reponseEntity = null;
+		// 使用elastic rest client(默认)
 		if (esConfig.getRestClient() != null) {
 			realUrl = wrapUrl(esConfig, nosqlConfig);
 			if (sqltoyContext.isDebug()) {
@@ -148,9 +147,6 @@ public class HttpClientUtils {
 				Request request = new Request(POST, realUrl);
 				request.setEntity(httpEntity);
 				Response response = restClient.performRequest(request);
-				// Response response = restClient.performRequest("POST", realUrl,
-				// Collections.<String, String>emptyMap(),
-				// httpEntity);
 				reponseEntity = response.getEntity();
 			} catch (Exception e) {
 				throw e;
@@ -159,7 +155,8 @@ public class HttpClientUtils {
 					restClient.close();
 				}
 			}
-		} else {
+		} // 组织httpclient模式调用(此种模式不推荐使用)
+		else {
 			realUrl = wrapUrl(esConfig, nosqlConfig);
 			HttpPost httpPost = new HttpPost(realUrl);
 			if (sqltoyContext.isDebug()) {

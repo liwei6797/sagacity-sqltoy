@@ -199,7 +199,7 @@ public class EntityMeta implements Serializable {
 	private boolean bizIdEqPK = false;
 
 	/**
-	 * 全部字段信息
+	 * 全部字段信息,默认值*最终存放colName1,colName2这种格式
 	 */
 	private String allColumnNames = "*";
 
@@ -506,8 +506,8 @@ public class EntityMeta implements Serializable {
 		this.loadSql = loadSql;
 	}
 
-	public FieldMeta getFieldMeta(String filed) {
-		return fieldsMeta.get(filed.toLowerCase());
+	public FieldMeta getFieldMeta(String field) {
+		return fieldsMeta.get(field.toLowerCase());
 	}
 
 	/**

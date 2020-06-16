@@ -29,6 +29,7 @@ import org.sagacity.sqltoy.executor.QueryExecutor;
 import org.sagacity.sqltoy.model.LockMode;
 import org.sagacity.sqltoy.model.QueryResult;
 import org.sagacity.sqltoy.model.StoreResult;
+import org.sagacity.sqltoy.utils.ReservedWordsUtil;
 import org.sagacity.sqltoy.utils.SqlUtil;
 import org.sagacity.sqltoy.utils.StringUtil;
 import org.slf4j.Logger;
@@ -111,7 +112,7 @@ public class SqlServerDialect implements Dialect {
 		SqlToyResult queryParam = DialectUtils.wrapPageSqlParams(sqlToyContext, sqlToyConfig, queryExecutor,
 				sql.toString(), (pageNo - 1) * pageSize, Long.valueOf(pageSize));
 		return findBySql(sqlToyContext, sqlToyConfig, queryParam.getSql(), queryParam.getParamsValue(),
-				queryExecutor.getRowCallbackHandler(), conn, dbType, dialect, queryExecutor.getFetchSize(),
+				queryExecutor.getRowCallbackHandler(), conn, null, dbType, dialect, queryExecutor.getFetchSize(),
 				queryExecutor.getMaxRows());
 	}
 
@@ -154,7 +155,7 @@ public class SqlServerDialect implements Dialect {
 		SqlToyResult queryParam = DialectUtils.wrapPageSqlParams(sqlToyContext, sqlToyConfig, queryExecutor,
 				sql.toString(), null, null);
 		return findBySql(sqlToyContext, sqlToyConfig, queryParam.getSql(), queryParam.getParamsValue(),
-				queryExecutor.getRowCallbackHandler(), conn, dbType, dialect, queryExecutor.getFetchSize(),
+				queryExecutor.getRowCallbackHandler(), conn, null, dbType, dialect, queryExecutor.getFetchSize(),
 				queryExecutor.getMaxRows());
 	}
 
@@ -168,9 +169,15 @@ public class SqlServerDialect implements Dialect {
 	 */
 	public QueryResult findBySql(final SqlToyContext sqlToyContext, final SqlToyConfig sqlToyConfig, final String sql,
 			final Object[] paramsValue, final RowCallbackHandler rowCallbackHandler, final Connection conn,
-			final Integer dbType, final String dialect, final int fetchSize, final int maxRows) throws Exception {
-		return DialectUtils.findBySql(sqlToyContext, sqlToyConfig, sql, paramsValue, rowCallbackHandler, conn, dbType,
-				0, fetchSize, maxRows);
+			final LockMode lockMode, final Integer dbType, final String dialect, final int fetchSize, final int maxRows)
+			throws Exception {
+		String realSql = sql;
+		//重新组织锁表语句
+		if (lockMode != null) {
+			realSql = SqlServerDialectUtils.lockSql(realSql, null, lockMode);
+		}
+		return DialectUtils.findBySql(sqlToyContext, sqlToyConfig, realSql, paramsValue, rowCallbackHandler, conn,
+				dbType, 0, fetchSize, maxRows);
 	}
 
 	/*
@@ -262,7 +269,7 @@ public class SqlServerDialect implements Dialect {
 		EntityMeta entityMeta = sqlToyContext.getEntityMeta(entity.getClass());
 		// 获取loadsql(loadsql 可以通过@loadSql进行改变，所以需要sqltoyContext重新获取)
 		SqlToyConfig sqlToyConfig = sqlToyContext.getSqlToyConfig(entityMeta.getLoadSql(tableName), SqlType.search);
-		String loadSql = sqlToyConfig.getSql(dialect);
+		String loadSql = ReservedWordsUtil.convertSql(sqlToyConfig.getSql(dialect), dbType);
 		if (lockMode != null) {
 			loadSql = SqlServerDialectUtils.lockSql(loadSql, entityMeta.getSchemaTable(tableName), lockMode);
 		}
@@ -289,7 +296,7 @@ public class SqlServerDialect implements Dialect {
 					entities.get(0).getClass().getName() + " Entity Object hasn't primary key,cann't use load method!");
 		}
 		StringBuilder loadSql = new StringBuilder();
-		loadSql.append("select ").append(entityMeta.getAllColumnNames());
+		loadSql.append("select ").append(ReservedWordsUtil.convertSimpleSql(entityMeta.getAllColumnNames(), dbType));
 		loadSql.append(" from ");
 		// sharding 分表情况下会传递表名
 		loadSql.append(entityMeta.getSchemaTable(tableName));
@@ -308,7 +315,7 @@ public class SqlServerDialect implements Dialect {
 			if (i > 0) {
 				loadSql.append(" and ");
 			}
-			loadSql.append(entityMeta.getColumnName(field));
+			loadSql.append(ReservedWordsUtil.convertWord(entityMeta.getColumnName(field), dbType));
 			loadSql.append(" in (:").append(field).append(") ");
 		}
 		return DialectUtils.loadAll(sqlToyContext, loadSql.toString(), entities, cascadeTypes, conn, dbType);

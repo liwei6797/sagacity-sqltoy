@@ -31,6 +31,7 @@ import org.sagacity.sqltoy.model.LockMode;
 import org.sagacity.sqltoy.model.QueryResult;
 import org.sagacity.sqltoy.model.StoreResult;
 import org.sagacity.sqltoy.utils.DataSourceUtils.DBType;
+import org.sagacity.sqltoy.utils.ReservedWordsUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -96,7 +97,7 @@ public class MySqlDialect implements Dialect {
 		SqlToyResult queryParam = DialectUtils.wrapPageSqlParams(sqlToyContext, sqlToyConfig, queryExecutor,
 				sql.toString(), null, null);
 		return findBySql(sqlToyContext, sqlToyConfig, queryParam.getSql(), queryParam.getParamsValue(),
-				queryExecutor.getRowCallbackHandler(), conn, dbType, dialect, queryExecutor.getFetchSize(),
+				queryExecutor.getRowCallbackHandler(), conn, null, dbType, dialect, queryExecutor.getFetchSize(),
 				queryExecutor.getMaxRows());
 	}
 
@@ -132,7 +133,7 @@ public class MySqlDialect implements Dialect {
 		SqlToyResult queryParam = DialectUtils.wrapPageSqlParams(sqlToyContext, sqlToyConfig, queryExecutor,
 				sql.toString(), (pageNo - 1) * pageSize, Long.valueOf(pageSize));
 		return findBySql(sqlToyContext, sqlToyConfig, queryParam.getSql(), queryParam.getParamsValue(),
-				queryExecutor.getRowCallbackHandler(), conn, dbType, dialect, queryExecutor.getFetchSize(),
+				queryExecutor.getRowCallbackHandler(), conn, null, dbType, dialect, queryExecutor.getFetchSize(),
 				queryExecutor.getMaxRows());
 	}
 
@@ -163,7 +164,7 @@ public class MySqlDialect implements Dialect {
 		SqlToyResult queryParam = DialectUtils.wrapPageSqlParams(sqlToyContext, sqlToyConfig, queryExecutor,
 				sql.toString(), null, null);
 		return findBySql(sqlToyContext, sqlToyConfig, queryParam.getSql(), queryParam.getParamsValue(),
-				queryExecutor.getRowCallbackHandler(), conn, dbType, dialect, queryExecutor.getFetchSize(),
+				queryExecutor.getRowCallbackHandler(), conn, null, dbType, dialect, queryExecutor.getFetchSize(),
 				queryExecutor.getMaxRows());
 	}
 
@@ -177,9 +178,19 @@ public class MySqlDialect implements Dialect {
 	 */
 	public QueryResult findBySql(final SqlToyContext sqlToyContext, final SqlToyConfig sqlToyConfig, final String sql,
 			final Object[] paramsValue, final RowCallbackHandler rowCallbackHandler, final Connection conn,
-			final Integer dbType, final String dialect, final int fetchSize, final int maxRows) throws Exception {
-		return DialectUtils.findBySql(sqlToyContext, sqlToyConfig, sql, paramsValue, rowCallbackHandler, conn, dbType,
-				0, fetchSize, maxRows);
+			final LockMode lockMode, final Integer dbType, final String dialect, final int fetchSize, final int maxRows)
+			throws Exception {
+		String realSql = sql;
+		if (lockMode != null) {
+			switch (lockMode) {
+			case UPGRADE_NOWAIT:
+			case UPGRADE:
+				realSql = realSql.concat(getLockSql(dbType));
+				break;
+			}
+		}
+		return DialectUtils.findBySql(sqlToyContext, sqlToyConfig, realSql, paramsValue, rowCallbackHandler, conn,
+				dbType, 0, fetchSize, maxRows);
 	}
 
 	/*
@@ -229,7 +240,7 @@ public class MySqlDialect implements Dialect {
 			logger.debug("修改记录数为:{}", updateCnt);
 			return updateCnt;
 		}
-		Long saveCnt = this.saveAllIgnoreExist(sqlToyContext, entities, batchSize, reflectPropertyHandler, conn, dbType,
+		Long saveCnt = saveAllIgnoreExist(sqlToyContext, entities, batchSize, reflectPropertyHandler, conn, dbType,
 				dialect, autoCommit, tableName);
 		logger.debug("变更记录数:{},新建记录数为:{}", updateCnt, saveCnt);
 		return updateCnt + saveCnt;
@@ -271,7 +282,7 @@ public class MySqlDialect implements Dialect {
 		EntityMeta entityMeta = sqlToyContext.getEntityMeta(entity.getClass());
 		// 获取loadsql(loadsql 可以通过@loadSql进行改变，所以需要sqltoyContext重新获取)
 		SqlToyConfig sqlToyConfig = sqlToyContext.getSqlToyConfig(entityMeta.getLoadSql(tableName), SqlType.search);
-		String loadSql = sqlToyConfig.getSql(dialect);
+		String loadSql = ReservedWordsUtil.convertSql(sqlToyConfig.getSql(dialect), dbType);
 		if (lockMode != null) {
 			switch (lockMode) {
 			case UPGRADE_NOWAIT:
@@ -294,8 +305,9 @@ public class MySqlDialect implements Dialect {
 	public List<?> loadAll(final SqlToyContext sqlToyContext, List<?> entities, List<Class> cascadeTypes,
 			LockMode lockMode, Connection conn, final Integer dbType, final String dialect, final String tableName)
 			throws Exception {
-		if (null == entities || entities.isEmpty())
+		if (null == entities || entities.isEmpty()) {
 			return null;
+		}
 		EntityMeta entityMeta = sqlToyContext.getEntityMeta(entities.get(0).getClass());
 		// 判断是否存在主键
 		if (null == entityMeta.getIdArray() || entityMeta.getIdArray().length < 1) {
@@ -303,7 +315,7 @@ public class MySqlDialect implements Dialect {
 					entities.get(0).getClass().getName() + " Entity Object hasn't primary key,cann't use load method!");
 		}
 		StringBuilder loadSql = new StringBuilder();
-		loadSql.append("select ").append(entityMeta.getAllColumnNames());
+		loadSql.append("select ").append(ReservedWordsUtil.convertSimpleSql(entityMeta.getAllColumnNames(), dbType));
 		loadSql.append(" from ");
 		// sharding 分表情况下会传递表名
 		loadSql.append(entityMeta.getSchemaTable(tableName));
@@ -314,7 +326,7 @@ public class MySqlDialect implements Dialect {
 			if (i > 0) {
 				loadSql.append(" and ");
 			}
-			loadSql.append(entityMeta.getColumnName(field));
+			loadSql.append(ReservedWordsUtil.convertWord(entityMeta.getColumnName(field), dbType));
 			loadSql.append(" in (:").append(field).append(") ");
 		}
 		if (lockMode != null) {
@@ -488,7 +500,6 @@ public class MySqlDialect implements Dialect {
 	public QueryResult updateFetchRandom(SqlToyContext sqlToyContext, SqlToyConfig sqlToyConfig, String sql,
 			Object[] paramsValue, Integer random, UpdateRowHandler updateRowHandler, Connection conn,
 			final Integer dbType, final String dialect) throws Exception {
-		// throw new UnsupportedOperationException(SqlToyConstants.UN_SUPPORT_MESSAGE);
 		String realSql = sql + " order by rand() limit " + random + getLockSql(dbType);
 		return DialectUtils.updateFetchBySql(sqlToyContext, sqlToyConfig, realSql, paramsValue, updateRowHandler, conn,
 				dbType, 0);

@@ -189,6 +189,7 @@ public class ShardingUtils {
 				tableName = tableStrategy.getShardingTable(sqlToyContext, entityClass, entityTable,
 						tableConfig.getDecisionType(), valueMap);
 			}
+			// 分组key
 			dataGroupKey = dataSourceName + tableName;
 			// 归并到相同分组
 			if (shardingGroupMaps.containsKey(dataGroupKey)) {
@@ -239,7 +240,7 @@ public class ShardingUtils {
 		// 优先以直接指定的dataSource为基准
 		DataSource shardingDataSource = dataSource;
 		// 如果没有sharding策略，则返回dataSource，否则以sharding的结果dataSource为基准
-		if (null == sqlToyConfig.getDataSourceShardingStragety())
+		if (null == sqlToyConfig || null == sqlToyConfig.getDataSourceShardingStragety())
 			return shardingDataSource;
 		String[] paramNames = queryExecutor.getDataSourceShardingParamsName(sqlToyConfig);
 		Object[] paramValues = queryExecutor.getDataSourceShardingParamsValue(sqlToyConfig);
